@@ -2,7 +2,7 @@ import { useRef, useEffect, useCallback } from 'react'
 import { useMap } from '@mapcomponents/react-maplibre'
 import * as THREE from 'three'
 import { MercatorCoordinate } from 'maplibre-gl'
-import { LngLat } from '../types'
+import type { LngLat } from '../types'
 
 export interface ThreeJsObject {
   id: string

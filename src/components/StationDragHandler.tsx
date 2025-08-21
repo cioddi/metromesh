@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMap } from '@mapcomponents/react-maplibre';
 import maplibregl from 'maplibre-gl';
-import { LngLat, Route } from '../types';
+import type { LngLat, Route } from '../types';
 
 interface DragState {
   isDragging: boolean;

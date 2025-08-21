@@ -1,4 +1,4 @@
-import { LngLat } from '../types';
+import type { LngLat } from '../types';
 
 // London central area bounding box for station generation
 export const LONDON_BOUNDS = {

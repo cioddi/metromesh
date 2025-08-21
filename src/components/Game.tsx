@@ -88,12 +88,6 @@ export default function Game() {
     passengers: [], // Not needed with simple count approach
   };
 
-  // Debug: Log stations with passengers
-  const stationsWithPassengers = gameDataForThreeJs.stations.filter(s => s.passengerCount > 0);
-  if (stationsWithPassengers.length > 0) {
-    console.log('Stations with passengers:', stationsWithPassengers);
-  }
-
   return (
     <>
       <MapComponent />

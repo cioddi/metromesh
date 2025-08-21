@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useMap } from '@mapcomponents/react-maplibre';
-import { LngLat } from '../types';
+import type { LngLat } from '../types';
 
 interface MapClickHandlerProps {
   onMapClick: (lngLat: LngLat) => void;

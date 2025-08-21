@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { LngLat } from '../types'
+import type { LngLat } from '../types'
 import { generateRandomPosition, TRAIN_CONFIG } from '../config/gameConfig'
 
 interface Station {

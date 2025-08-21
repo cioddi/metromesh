@@ -1,6 +1,6 @@
 import * as THREE from 'three'
-import { Station, Route, Train, Passenger, LngLat } from '../types'
-import { ThreeJsObject } from '../components/MlThreeJsLayer'
+import type { Station, Route, Train, Passenger, LngLat } from '../types'
+import type { ThreeJsObject } from '../components/MlThreeJsLayer'
 
 // Accepts full or partial station (id, position, color)
 export function createStationObject(station: { id: string; position: LngLat; color: string }): ThreeJsObject {

@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useMap } from '@mapcomponents/react-maplibre'
 import * as THREE from 'three'
 import { MercatorCoordinate } from 'maplibre-gl'
-import { LngLat, Route, Train, Passenger } from '../types'
+import type { LngLat, Route, Train, Passenger } from '../types'
 import { createStationObject } from '../utils/threeObjectFactories'
 
 // Helper function to create metro-style route coordinates

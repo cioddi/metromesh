@@ -1,4 +1,4 @@
-import { GameState } from '../types'
+import type { GameState } from '../types'
 
 interface GameUIProps {
   gameState: GameState

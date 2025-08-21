@@ -1,4 +1,4 @@
-import { LngLat, Position } from '../types'
+import type { LngLat, Position } from '../types'
 
 const EARTH_RADIUS = 6371000
 
