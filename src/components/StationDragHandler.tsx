@@ -31,6 +31,12 @@ function StationDragHandler({ stations, routes, onCreateRoute, onExtendRoute }: 
   });
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const mouseMoveTimeoutRef = useRef<number | null>(null);
+  const dragStateRef = useRef(dragState);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    dragStateRef.current = dragState;
+  }, [dragState]);
 
   useEffect(() => {
     if (!mapHook?.map) return;
@@ -40,10 +46,10 @@ function StationDragHandler({ stations, routes, onCreateRoute, onExtendRoute }: 
     canvasRef.current = canvas;
     
 
-    const handleMouseDown = (e: MouseEvent) => {
+    const handleStart = (clientX: number, clientY: number, event: Event) => {
       const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
       
       // Convert screen coordinates to map coordinates
       const point = map.unproject([x, y]);
@@ -60,8 +66,8 @@ function StationDragHandler({ stations, routes, onCreateRoute, onExtendRoute }: 
           targetStation: null,
           fromRouteEnd: { routeId: routeEnd.routeId, isEnd: routeEnd.isEnd }
         });
-        e.preventDefault();
-        e.stopPropagation();
+        event.preventDefault();
+        event.stopPropagation();
         return;
       }
       
@@ -77,13 +83,26 @@ function StationDragHandler({ stations, routes, onCreateRoute, onExtendRoute }: 
           targetStation: null,
           fromRouteEnd: undefined
         });
-        e.preventDefault();
-        e.stopPropagation();
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+
+    const handleMouseDown = (e: MouseEvent) => {
+      handleStart(e.clientX, e.clientY, e);
+    };
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        e.preventDefault(); // Always prevent default to stop map panning
+        const touch = e.touches[0];
+        handleStart(touch.clientX, touch.clientY, e);
       }
     };
 
     const updateDragPosition = (pointLngLat: LngLat) => {
-      const startStation = stations.find(s => s.id === dragState.startStation);
+      const currentDragState = dragStateRef.current;
+      const startStation = stations.find(s => s.id === currentDragState.startStation);
       if (!startStation) return;
 
       // Find the best target station within range
@@ -93,7 +112,7 @@ function StationDragHandler({ stations, routes, onCreateRoute, onExtendRoute }: 
       let isValidTarget = false;
       let constrainedEnd = pointLngLat;
 
-      if (potentialTarget && potentialTarget.id !== dragState.startStation) {
+      if (potentialTarget && potentialTarget.id !== currentDragState.startStation) {
         // If we have a potential target, snap the line to the best 45-degree angle to reach it
         const snappedEnd = snapTo45DegreeConnection(startStation.position, potentialTarget.position);
         constrainedEnd = { lng: snappedEnd.lng, lat: snappedEnd.lat };
@@ -118,14 +137,14 @@ function StationDragHandler({ stations, routes, onCreateRoute, onExtendRoute }: 
       }));
     };
 
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!dragState.isDragging) return;
+    const handleMove = (clientX: number, clientY: number, event: Event) => {
+      if (!dragStateRef.current.isDragging) return;
 
-      e.preventDefault();
+      event.preventDefault();
       
       const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
       const point = map.unproject([x, y]);
       const pointLngLat = { lng: point.lng, lat: point.lat };
       
@@ -138,14 +157,15 @@ function StationDragHandler({ stations, routes, onCreateRoute, onExtendRoute }: 
       updateDragPosition(pointLngLat);
     };
 
-    const handleMouseUp = () => {
-      if (dragState.isDragging && dragState.isValidTarget && dragState.targetStation) {
-        if (dragState.fromRouteEnd) {
+    const handleEnd = () => {
+      const currentDragState = dragStateRef.current;
+      if (currentDragState.isDragging && currentDragState.isValidTarget && currentDragState.targetStation) {
+        if (currentDragState.fromRouteEnd) {
           // Extend existing route
-          onExtendRoute(dragState.fromRouteEnd.routeId, dragState.targetStation, dragState.fromRouteEnd.isEnd);
+          onExtendRoute(currentDragState.fromRouteEnd.routeId, currentDragState.targetStation, currentDragState.fromRouteEnd.isEnd);
         } else {
           // Create new route
-          onCreateRoute(dragState.startStation!, dragState.targetStation);
+          onCreateRoute(currentDragState.startStation!, currentDragState.targetStation);
         }
       }
 
@@ -159,15 +179,46 @@ function StationDragHandler({ stations, routes, onCreateRoute, onExtendRoute }: 
       });
     };
 
+    const handleMouseMove = (e: MouseEvent) => {
+      handleMove(e.clientX, e.clientY, e);
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (dragStateRef.current.isDragging) {
+        e.preventDefault(); // Prevent map panning while dragging
+      }
+      if (e.touches.length === 1) {
+        const touch = e.touches[0];
+        handleMove(touch.clientX, touch.clientY, e);
+      }
+    };
+
+    const handleMouseUp = () => {
+      handleEnd();
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      // Only handle if there are no remaining touches
+      if (e.touches.length === 0) {
+        handleEnd();
+      }
+    };
+
     // Add event listeners
     canvas.addEventListener('mousedown', handleMouseDown);
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
     document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
     document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('touchend', handleTouchEnd, { passive: false });
 
     return () => {
       canvas.removeEventListener('mousedown', handleMouseDown);
+      canvas.removeEventListener('touchstart', handleTouchStart);
       document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('touchmove', handleTouchMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('touchend', handleTouchEnd);
     };
   }, [mapHook?.map, stations, routes, onCreateRoute, onExtendRoute]);
 
