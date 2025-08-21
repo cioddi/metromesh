@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import type { GameState } from '../types';
 
 interface GameUIProps {
@@ -9,7 +9,7 @@ interface GameUIProps {
 
 const isMobile = () => typeof window !== 'undefined' && window.innerWidth <= 768;
 
-export default function GameUI({ gameState, onReset }: GameUIProps) {
+export default function GameUI({ gameState }: GameUIProps) {
   const [showStations, setShowStations] = useState(false);
   const [showInstructions, setShowInstructions] = useState(false);
   const mobile = isMobile();
