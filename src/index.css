@@ -1,3 +1,201 @@
+/* Mobile overlays for stations and instructions: white background */
+.stations-section.mobile,
+.instructions-section.mobile {
+  background: #fff !important;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.10);
+  margin: 0.5rem;
+  padding: 0.75rem;
+  max-width: 95vw;
+  z-index: 2100;
+  position: relative;
+}
+/* --- Mobile MetroMesh UI Styles --- */
+.game-ui-mobile {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  z-index: 2000;
+  background: none;
+  pointer-events: none;
+}
+.game-ui-mobile .legend-header {
+  background: #fff;
+  color: #222;
+  padding: 12px 8px 8px 8px;
+  text-align: center;
+  border-radius: 0 0 16px 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  pointer-events: auto;
+}
+.game-ui-mobile .logo {
+  height: 68px;
+  margin-bottom: 0px;
+}
+.game-ui-mobile .stats {
+  display: flex;
+  justify-content: space-around;
+  gap: 8px;
+}
+.game-ui-mobile-buttons {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.5rem 0.5rem 0 0.5rem;
+  pointer-events: auto;
+  justify-content: center;
+}
+.game-ui-mobile-buttons button {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  font-size: 1rem;
+  border-radius: 8px;
+  border: none;
+  background: #667eea;
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.game-ui-mobile-buttons button:hover {
+  background: #4b5fc0;
+}
+.game-ui-stations.mobile,
+.game-ui-instructions.mobile {
+  background: rgba(255,255,255,0.98);
+  margin: 0.5rem;
+  padding: 0.75rem;
+  border-radius: 12px;
+  max-width: 95vw;
+  pointer-events: auto;
+  font-size: 1rem;
+  z-index: 2100;
+  position: relative;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.10);
+  color: #222;
+}
+.game-ui-stations.mobile h3,
+.game-ui-instructions.mobile h3 {
+  margin-top: 0;
+  color: #333;
+}
+.game-ui-stations.mobile ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.game-ui-stations.mobile li {
+  padding: 0.25rem 0;
+  border-bottom: 1px solid #eee;
+  color: #222;
+}
+.game-ui-stations.mobile li:last-child {
+  border-bottom: none;
+}
+/* Ensure desktop station list and instructions are dark text on white */
+.metro-legend, .stations-section, .instructions-section, .stations-list, .station-item, .instruction-item {
+  color: #222 !important;
+}
+@media (max-width: 768px) {
+  .metro-legend {
+    display: none !important;
+  }
+}
+/* --- GameUI Responsive Styles --- */
+.game-ui {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  z-index: 2000;
+  pointer-events: none;
+}
+.game-ui-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(255,255,255,0.95);
+  padding: 0.5rem 1rem;
+  pointer-events: auto;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.game-ui-logo {
+  height: 32px;
+}
+.game-ui-stats {
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #333;
+}
+.game-ui-mobile-buttons {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.5rem 0.5rem 0 0.5rem;
+  pointer-events: auto;
+  justify-content: center;
+}
+.game-ui-controls {
+  display: flex;
+  gap: 1rem;
+  margin: 1rem;
+  pointer-events: auto;
+}
+.game-ui-stations,
+.game-ui-instructions {
+  background: rgba(255,255,255,0.98);
+  margin: 0.5rem;
+  padding: 0.75rem;
+  border-radius: 8px;
+  max-width: 95vw;
+  pointer-events: auto;
+  font-size: 1rem;
+  z-index: 20;
+  position: relative;
+}
+
+@media (max-width: 768px) {
+  .game-ui {
+    pointer-events: none;
+    width: 100vw;
+    left: 0;
+    top: 0;
+  }
+  .game-ui-header {
+    flex-direction: row;
+    padding: 0.5rem 0.5rem;
+  }
+  .game-ui-logo {
+    height: 28px;
+  }
+  .game-ui-stats {
+    font-size: 1rem;
+  }
+  .game-ui-controls,
+  .game-ui-stations:not(.mobile),
+  .game-ui-instructions:not(.mobile) {
+    display: none !important;
+  }
+  .game-ui-mobile-buttons {
+    display: flex;
+    gap: 0.5rem;
+    margin: 0.5rem;
+    pointer-events: auto;
+    justify-content: center;
+  }
+  .game-ui-stations.mobile,
+  .game-ui-instructions.mobile {
+    background: rgba(255,255,255,0.98);
+    margin: 0.5rem;
+    padding: 0.75rem;
+    border-radius: 8px;
+    max-width: 95vw;
+    pointer-events: auto;
+    font-size: 1rem;
+    z-index: 20;
+    position: relative;
+  }
+}
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
@@ -84,9 +282,8 @@ body {
 }
 
 .logo {
-  height: 32px;
+  height: 62px;
   margin-bottom: 12px;
-  filter: brightness(0) invert(1);
 }
 
 .stats {
