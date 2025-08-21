@@ -1,0 +1,217 @@
+import { useState, useCallback } from 'react'
+import { GameState, Station, Route, Train, Passenger, LngLat } from '../types'
+import { generateRandomPosition, GAME_CONFIG, TRAIN_CONFIG } from '../config/gameConfig'
+
+const STATION_COLORS = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24', '#f0932b', '#eb4d4b', '#6c5ce7', '#a29bfe']
+
+
+export function useGameState() {
+  const [gameState, setGameState] = useState<GameState>({
+    stations: [],
+    routes: [],
+    trains: [],
+    passengers: [],
+    score: 0,
+    isPlaying: true,
+    gameSpeed: 1
+  })
+
+  const addStation = useCallback((position?: LngLat) => {
+    // Generate random position if not provided (for automatic station generation)
+    const stationPosition = position || generateRandomPosition()
+
+    const newStation: Station = {
+      id: `station-${Date.now()}`,
+      position: stationPosition,
+      color: STATION_COLORS[gameState.stations.length % STATION_COLORS.length],
+      passengers: [],
+      capacity: 20
+    }
+
+    setGameState(prev => ({
+      ...prev,
+      stations: [...prev.stations, newStation]
+    }))
+  }, [gameState.stations.length])
+
+  const addRoute = useCallback((stationIds: string[], color: string) => {
+    const newRoute: Route = {
+      id: `route-${Date.now()}`,
+      color,
+      stations: stationIds,
+      trains: []
+    }
+
+    const newTrain: Train = {
+      id: `train-${Date.now()}`,
+      routeId: newRoute.id,
+      position: 0,
+      direction: 1,
+      passengers: [],
+      capacity: TRAIN_CONFIG.defaultCapacity,
+      speedKmh: TRAIN_CONFIG.defaultSpeedKmh
+    }
+
+    setGameState(prev => ({
+      ...prev,
+      routes: [...prev.routes, newRoute],
+      trains: [...prev.trains, newTrain]
+    }))
+  }, [])
+
+  const spawnPassenger = useCallback(() => {
+    if (gameState.stations.length < 2) return
+
+    const originStation = gameState.stations[Math.floor(Math.random() * gameState.stations.length)]
+    let destinationStation = gameState.stations[Math.floor(Math.random() * gameState.stations.length)]
+    
+    while (destinationStation.id === originStation.id) {
+      destinationStation = gameState.stations[Math.floor(Math.random() * gameState.stations.length)]
+    }
+
+    const newPassenger: Passenger = {
+      id: `passenger-${Date.now()}`,
+      origin: originStation.id,
+      destination: destinationStation.id,
+      spawnTime: Date.now(),
+      color: destinationStation.color
+    }
+
+    setGameState(prev => ({
+      ...prev,
+      passengers: [...prev.passengers, newPassenger],
+      stations: prev.stations.map(station => 
+        station.id === originStation.id
+          ? { ...station, passengers: [...station.passengers, newPassenger] }
+          : station
+      )
+    }))
+  }, [gameState.stations])
+
+  const updateTrainPositions = useCallback(() => {
+    setGameState(prev => {
+      let newScore = prev.score
+      let updatedStations = [...prev.stations]
+      let updatedGlobalPassengers = [...prev.passengers]
+      
+      const updatedTrains = prev.trains.map(train => {
+        const route = prev.routes.find(r => r.id === train.routeId)
+        if (!route || route.stations.length < 2) return train
+
+        // Convert km/h to position units per game loop (simple approach)
+        // Assume average 1km between stations, so speedKmh directly converts to stations per hour
+        const speedStationsPerHour = train.speedKmh / 1 // 1km average between stations
+        const speedStationsPerSecond = speedStationsPerHour / 3600
+        const speedPerLoop = speedStationsPerSecond * (GAME_CONFIG.gameLoopInterval / 1000)
+        
+        let newPosition = train.position + speedPerLoop * train.direction * prev.gameSpeed
+        let newDirection: 1 | -1 = train.direction
+        
+        if (newPosition >= route.stations.length - 1) {
+          newPosition = route.stations.length - 1
+          newDirection = -1
+        } else if (newPosition <= 0) {
+          newPosition = 0
+          newDirection = 1
+        }
+
+        // Simple passenger logic: track count, everyone off at each station, pick up new ones
+        let passengerCount = train.passengers.length
+        const currentStationIndex = Math.round(newPosition)
+        const distanceToStation = Math.abs(newPosition - currentStationIndex)
+        
+        // Only handle passengers when train stops at a station (within 0.05 position units)
+        if (distanceToStation < 0.05 && currentStationIndex >= 0 && currentStationIndex < route.stations.length) {
+          const currentStationId = route.stations[currentStationIndex]
+          
+          // Score points for passengers that reached their destination
+          const deliveredPassengers = train.passengers.filter(p => p.destination === currentStationId)
+          newScore += deliveredPassengers.length * 10
+          
+          // Everyone gets off (passengers just vanish as requested)
+          passengerCount = 0
+
+          // Pick up as many waiting passengers as possible (up to capacity)
+          const station = updatedStations.find(s => s.id === currentStationId)
+          if (station && station.passengers.length > 0) {
+            const passengersToPickup = Math.min(station.passengers.length, train.capacity)
+            passengerCount = passengersToPickup
+            
+            // Remove picked up passengers from station and global lists
+            updatedStations = updatedStations.map(s => 
+              s.id === currentStationId 
+                ? { ...s, passengers: s.passengers.slice(passengersToPickup) }
+                : s
+            )
+            updatedGlobalPassengers = updatedGlobalPassengers.filter(p => {
+              const stationPassengerIndex = station.passengers.findIndex(sp => sp.id === p.id)
+              return stationPassengerIndex === -1 || stationPassengerIndex >= passengersToPickup
+            })
+          }
+        }
+
+        return {
+          ...train,
+          position: newPosition,
+          direction: newDirection,
+          passengers: Array(passengerCount).fill(null).map((_, i) => ({ 
+            id: `temp-${train.id}-${i}`, 
+            origin: '', 
+            destination: '', 
+            spawnTime: Date.now(), 
+            color: '#888888' 
+          }))
+        }
+      })
+
+      return {
+        ...prev,
+        trains: updatedTrains,
+        stations: updatedStations,
+        passengers: updatedGlobalPassengers,
+        score: newScore
+      }
+    })
+  }, [])
+
+  const extendRoute = useCallback((routeId: string, newStationId: string, atEnd: boolean) => {
+    setGameState(prev => ({
+      ...prev,
+      routes: prev.routes.map(route => {
+        if (route.id !== routeId) return route;
+        
+        const updatedStations = atEnd 
+          ? [...route.stations, newStationId]  // Add to end
+          : [newStationId, ...route.stations]; // Add to beginning
+        
+        return {
+          ...route,
+          stations: updatedStations
+        };
+      })
+    }))
+  }, [])
+
+  const resetGame = useCallback(() => {
+    setGameState({
+      stations: [],
+      routes: [],
+      trains: [],
+      passengers: [],
+      score: 0,
+      isPlaying: true,
+      gameSpeed: 1
+    })
+  }, [])
+
+  return {
+    gameState,
+    addStation,
+    addRoute,
+    extendRoute,
+    spawnPassenger,
+    updateTrainPositions,
+    resetGame,
+    setGameState
+  }
+}

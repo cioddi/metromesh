@@ -1,0 +1,280 @@
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #242424;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.game-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+}
+
+/* MapLibre container styles */
+.mapContainer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 100;
+}
+
+/* Ensure MapLibre canvas fills container */
+.maplibregl-map {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Professional Metro Legend Styles */
+.metro-legend {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  width: 280px;
+  z-index: 1000;
+  background: white;
+  color: #333;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* Header with logo and stats */
+.legend-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 16px;
+  text-align: center;
+}
+
+.logo {
+  height: 32px;
+  margin-bottom: 12px;
+  filter: brightness(0) invert(1);
+}
+
+.stats {
+  display: flex;
+  justify-content: space-around;
+  gap: 8px;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+}
+
+.stat-value {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.stat-label {
+  font-size: 11px;
+  opacity: 0.9;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Section styles */
+.routes-section,
+.stations-section,
+.instructions-section {
+  padding: 16px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+  color: #444;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Routes */
+.routes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.route-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.route-line {
+  width: 20px;
+  height: 4px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.route-name {
+  font-weight: 500;
+  flex: 1;
+  font-size: 13px;
+}
+
+.station-count {
+  font-size: 11px;
+  color: #666;
+  background: #f5f5f5;
+  padding: 2px 6px;
+  border-radius: 8px;
+}
+
+/* Stations */
+.stations-list {
+  max-height: 200px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.station-item {
+  position: relative;
+  padding: 6px 4px;
+  border-radius: 6px;
+  transition: background-color 0.15s ease;
+}
+
+.station-item:hover {
+  background: #f8f9fa;
+}
+
+.station-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.station-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 2px solid white;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
+}
+
+.station-name {
+  font-size: 13px;
+  font-weight: 500;
+  flex: 1;
+}
+
+.passenger-badge {
+  background: #ff6b6b;
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 10px;
+  min-width: 18px;
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* Buttons */
+.reset-btn {
+  width: calc(100% - 32px);
+  margin: 16px;
+  padding: 10px;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.reset-btn:hover {
+  background: #c82333;
+}
+
+/* Instructions */
+.instructions-section {
+  border-bottom: none;
+}
+
+.instruction-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+  color: #666;
+}
+
+.instruction-icon {
+  font-size: 14px;
+  width: 20px;
+  text-align: center;
+}
+
+/* Scrollbar styling */
+.stations-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.stations-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.stations-list::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 2px;
+}
+
+.stations-list::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}
