@@ -18,7 +18,7 @@ export default function GameUI({ gameState }: GameUIProps) {
     return (
       <div className="game-ui-mobile">
         <div className="legend-header">
-          <img src="/logo.png" alt="MetroMesh" className="logo" />
+          <img src="/metromesh/logo.png" alt="MetroMesh" className="logo" />
           <div className="stats">
             <div className="stat-item">
               <span className="stat-value">{gameState.score}</span>
@@ -84,7 +84,7 @@ export default function GameUI({ gameState }: GameUIProps) {
   return (
     <div className="metro-legend">
       <div className="legend-header">
-        <img src="/logo.png" alt="MetroMesh" className="logo" />
+        <img src="/metromesh/logo.png" alt="MetroMesh" className="logo" />
         <div className="stats">
           <div className="stat-item">
             <span className="stat-value">{gameState.score}</span>
