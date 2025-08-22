@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { useMap } from '@mapcomponents/react-maplibre';
 import MapComponent from "./MapComponent";
 import GameThreeLayer from "./GameThreeLayer";
@@ -34,13 +34,11 @@ export default function Game() {
   const initialStationsCreated = useRef(false);
 
   // Water detection function using MapLibre queryRenderedFeatures
-  const isPositionOnWater = (position: LngLat): boolean => {
+  const isPositionOnWater = useCallback((position: LngLat): boolean => {
     if (!mapHook?.map) return false;
-    
     try {
       const point = mapHook.map.project([position.lng, position.lat]);
       const features = mapHook.map.queryRenderedFeatures([point.x, point.y]);
-      
       // Check if any of the features are water-related
       // Common water layer names: 'water', 'ocean', 'sea', 'lake', 'river', etc.
       for (const feature of features) {
@@ -49,7 +47,6 @@ export default function Game() {
         const featureType = feature.properties?.class?.toLowerCase() || '';
         const landuse = feature.properties?.landuse?.toLowerCase() || '';
         const natural = feature.properties?.natural?.toLowerCase() || '';
-        
         // Check various water indicators
         if (
           layerName.includes('water') ||
@@ -67,13 +64,12 @@ export default function Game() {
           return true;
         }
       }
-      
       return false;
     } catch (error) {
       console.warn('Error checking water features:', error);
       return false; // If there's an error, allow the position
     }
-  };
+  }, [mapHook?.map]);
 
   // Reset the initial stations flag when game resets
   useEffect(() => {
@@ -82,15 +78,45 @@ export default function Game() {
     }
   }, [stations.length]);
 
-  // Add initial stations when game starts (now random)
+  // Add initial stations when game starts, ensuring they are inside the current map view
   useEffect(() => {
     if (stations.length === 0 && !initialStationsCreated.current && mapHook?.map) {
       initialStationsCreated.current = true;
-      // Add 2 random initial stations with staggered timing, avoiding water
-      setTimeout(() => addStation(undefined, isPositionOnWater), 0); // First random station immediately
-      setTimeout(() => addStation(undefined, isPositionOnWater), 1000); // Second random station after 1 second
+      const bounds = mapHook.map.getBounds();
+      // Helper to generate a random LngLat at least 100m from the map view edge
+      const randomPositionInBounds = () => {
+        const sw = bounds.getSouthWest();
+        const ne = bounds.getNorthEast();
+        // Calculate 100m in degrees (approximate, varies with latitude)
+        const metersToDegreesLat = 100 / 111320; // 1 deg lat ≈ 111.32km
+        const centerLat = (sw.lat + ne.lat) / 2;
+        const metersToDegreesLng = 100 / (111320 * Math.cos(centerLat * Math.PI / 180));
+        return {
+          lng: sw.lng + metersToDegreesLng + Math.random() * ((ne.lng - sw.lng) - 2 * metersToDegreesLng),
+          lat: sw.lat + metersToDegreesLat + Math.random() * ((ne.lat - sw.lat) - 2 * metersToDegreesLat)
+        };
+      };
+      // Add 2 stations inside the current map view, avoiding water
+      setTimeout(() => {
+        let pos;
+        let attempts = 0;
+        do {
+          pos = randomPositionInBounds();
+          attempts++;
+        } while (isPositionOnWater(pos) && attempts < 10);
+        addStation(pos, isPositionOnWater);
+      }, 0);
+      setTimeout(() => {
+        let pos;
+        let attempts = 0;
+        do {
+          pos = randomPositionInBounds();
+          attempts++;
+        } while (isPositionOnWater(pos) && attempts < 10);
+        addStation(pos, isPositionOnWater);
+      }, 1000);
     }
-  }, [stations.length, addStation, mapHook?.map]);
+  }, [stations.length, addStation, mapHook?.map, isPositionOnWater]);
 
   useEffect(() => {
     if (!isPlaying) return;
@@ -117,6 +143,7 @@ export default function Game() {
     addStation,
     addPassengerToStation,
     stations,
+    isPositionOnWater,
   ]);
 
 
