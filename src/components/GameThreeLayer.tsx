@@ -6,7 +6,7 @@ import type { LngLat, Route, Train, Passenger } from '../types'
 import { createStationObject } from '../utils/threeObjectFactories'
 import { PERFORMANCE_CONFIG } from '../config/gameConfig'
 
-// Helper function to create metro-style route coordinates using Web Mercator for true visual alignment
+// Comprehensive metro-style route coordinate generation with perfect straight line guarantees
 function createMetroRouteCoordinates(start: LngLat, target: LngLat): number[][] {
   // Convert to Web Mercator coordinates for true visual calculations
   const startMerc = MercatorCoordinate.fromLngLat([start.lng, start.lat], 0);
@@ -18,9 +18,10 @@ function createMetroRouteCoordinates(start: LngLat, target: LngLat): number[][] 
   // Start with the starting point
   const coordinates: number[][] = [[start.lng, start.lat]];
   
-  // Check for alignment using meters-based threshold (~10m equivalent in Mercator space)
-  const startMeterUnit = startMerc.meterInMercatorCoordinateUnits();
-  const alignmentThreshold = 10 * startMeterUnit; // ~10 meters in Mercator units
+  // Calculate alignment thresholds in Mercator space
+  const meterUnit = startMerc.meterInMercatorCoordinateUnits();
+  const alignmentThreshold = 10 * meterUnit; // ~10m threshold
+  const minStraightSegment = 30 * meterUnit;  // Minimum 30m for straight segments
   
   // If already aligned horizontally or vertically, go straight
   if (Math.abs(dx_m) < alignmentThreshold) {
@@ -32,61 +33,123 @@ function createMetroRouteCoordinates(start: LngLat, target: LngLat): number[][] 
     return coordinates;
   }
   
-  // Calculate which direction to go diagonally first in Mercator space
+  // For dogleg routes, ensure both segments meet minimum length requirements
   const absDx_m = Math.abs(dx_m);
   const absDy_m = Math.abs(dy_m);
   
-  // Determine the 45-degree direction in Mercator space
-  const diagonalDistance_m = Math.min(absDx_m, absDy_m);
-  const signX = dx_m > 0 ? 1 : -1;
-  const signY = dy_m > 0 ? 1 : -1;
-  
-  // Calculate the corner point in Mercator space for true 45-degree alignment
+  // Determine route orientation and calculate optimal corner position
   let cornerMerc: MercatorCoordinate;
+  let finalConnectionPoint: LngLat;
   
   if (absDx_m < absDy_m) {
-    // Diagonal stops when we reach target x - ensure perfect vertical alignment for final segment
-    cornerMerc = new MercatorCoordinate(
-      targetMerc.x, 
-      startMerc.y + signY * diagonalDistance_m, 
-      0
-    );
+    // Route ends with vertical segment
+    const availableVertical = absDy_m;
+    const diagonalComponent = Math.min(absDx_m, availableVertical - minStraightSegment);
+    
+    if (diagonalComponent <= 0) {
+      // Not enough space for diagonal - go straight vertical
+      coordinates.push([start.lng, target.lat]);
+      return coordinates;
+    }
+    
+    // Calculate corner position ensuring minimum straight segment
+    const cornerY = startMerc.y + Math.sign(dy_m) * diagonalComponent;
+    cornerMerc = new MercatorCoordinate(targetMerc.x, cornerY, 0);
+    
+    // Final connection point ensures perfect vertical alignment
+    finalConnectionPoint = target; // Connect to station center for vertical approach
+    
   } else {
-    // Diagonal stops when we reach target y - ensure perfect horizontal alignment for final segment  
-    cornerMerc = new MercatorCoordinate(
-      startMerc.x + signX * diagonalDistance_m, 
-      targetMerc.y, 
-      0
-    );
+    // Route ends with horizontal segment
+    const availableHorizontal = absDx_m;
+    const diagonalComponent = Math.min(absDy_m, availableHorizontal - minStraightSegment);
+    
+    if (diagonalComponent <= 0) {
+      // Not enough space for diagonal - go straight horizontal
+      coordinates.push([target.lng, start.lat]);
+      return coordinates;
+    }
+    
+    // Calculate corner position ensuring minimum straight segment
+    const cornerX = startMerc.x + Math.sign(dx_m) * diagonalComponent;
+    cornerMerc = new MercatorCoordinate(cornerX, targetMerc.y, 0);
+    
+    // Final connection point ensures perfect horizontal alignment
+    finalConnectionPoint = target; // Connect to station center for horizontal approach
   }
   
-  // Convert corner back to lng-lat
+  // Convert corner to lng-lat and ensure perfect metro alignment
   const cornerLngLat = cornerMerc.toLngLat();
   let cornerLng = cornerLngLat.lng;
   let cornerLat = cornerLngLat.lat;
   
-  // Ensure perfect alignment for final segments
+  // Force perfect alignment by snapping corner to target's axis
   if (absDx_m < absDy_m) {
-    // Final segment should be perfectly vertical - corner must have target's longitude
-    cornerLng = target.lng;
+    // Vertical final segment - corner must share target's longitude exactly
+    cornerLng = finalConnectionPoint.lng;
   } else {
-    // Final segment should be perfectly horizontal - corner must have target's latitude  
-    cornerLat = target.lat;
+    // Horizontal final segment - corner must share target's latitude exactly  
+    cornerLat = finalConnectionPoint.lat;
   }
   
-  // Check for duplicates before adding corner point
+  // Add corner point if it's significantly different from start
+  const cornerThreshold = 0.000001;
   const lastCoord = coordinates[coordinates.length - 1];
-  const cornerThreshold = 0.000001; // Very small threshold for lng-lat comparison
   if (Math.abs(cornerLng - lastCoord[0]) > cornerThreshold || 
       Math.abs(cornerLat - lastCoord[1]) > cornerThreshold) {
     coordinates.push([cornerLng, cornerLat]);
   }
   
-  // Check for duplicates before adding target point
+  // Add final connection point if different from corner
   const currentLastCoord = coordinates[coordinates.length - 1];
-  if (Math.abs(target.lng - currentLastCoord[0]) > cornerThreshold || 
-      Math.abs(target.lat - currentLastCoord[1]) > cornerThreshold) {
-    coordinates.push([target.lng, target.lat]);
+  if (Math.abs(finalConnectionPoint.lng - currentLastCoord[0]) > cornerThreshold || 
+      Math.abs(finalConnectionPoint.lat - currentLastCoord[1]) > cornerThreshold) {
+    coordinates.push([finalConnectionPoint.lng, finalConnectionPoint.lat]);
+  }
+  
+  // Validate that all generated segments are truly straight (horizontal, vertical, or 45°)
+  const validatedCoordinates = validateStraightLines(coordinates);
+  return validatedCoordinates;
+}
+
+// Validation function to ensure all segments are perfectly straight in Web Mercator space
+function validateStraightLines(coordinates: number[][]): number[][] {
+  if (coordinates.length < 2) return coordinates;
+  
+  for (let i = 0; i < coordinates.length - 1; i++) {
+    const start = { lng: coordinates[i][0], lat: coordinates[i][1] };
+    const end = { lng: coordinates[i + 1][0], lat: coordinates[i + 1][1] };
+    
+    // Convert to Mercator for accurate angle validation
+    const startMerc = MercatorCoordinate.fromLngLat([start.lng, start.lat], 0);
+    const endMerc = MercatorCoordinate.fromLngLat([end.lng, end.lat], 0);
+    
+    const dx_m = endMerc.x - startMerc.x;
+    const dy_m = endMerc.y - startMerc.y;
+    const length_m = Math.hypot(dx_m, dy_m);
+    
+    if (length_m < 0.000001) continue; // Skip zero-length segments
+    
+    const nx = dx_m / length_m;
+    const ny = dy_m / length_m;
+    
+    // Check if segment is truly horizontal, vertical, or 45° diagonal
+    const isHorizontal = Math.abs(ny) < 0.01; // Very strict tolerance
+    const isVertical = Math.abs(nx) < 0.01;
+    const isDiagonal = Math.abs(Math.abs(nx) - Math.abs(ny)) < 0.01;
+    
+    if (!isHorizontal && !isVertical && !isDiagonal) {
+      console.warn(`Non-straight segment detected: ${start.lng},${start.lat} to ${end.lng},${end.lat} (angle: ${Math.atan2(ny, nx) * 180 / Math.PI}°)`);
+      
+      // Force correction by snapping to nearest valid direction
+      if (Math.abs(nx) > Math.abs(ny)) {
+        // More horizontal - force horizontal
+        coordinates[i + 1][1] = coordinates[i][1];
+      } else {
+        // More vertical - force vertical
+        coordinates[i + 1][0] = coordinates[i][0];
+      }
+    }
   }
   
   return coordinates;
@@ -1327,70 +1390,95 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
         return { bandIndex, bandSize, spacing, direction: corridor.averageDirection }
       }
 
-      // Helper function to determine metro direction type using Web Mercator coordinates
-      const getMetroDirection = (dx_m: number, dy_m: number): 'horizontal' | 'vertical' | 'diagonal' => {
-        const length_m = Math.hypot(dx_m, dy_m)
-        if (length_m === 0) return 'horizontal'
-        
-        const nx = dx_m / length_m
-        const ny = dy_m / length_m
-        
-        // Check for horizontal (±1, 0) - very small y component
-        if (Math.abs(ny) < 0.1) return 'horizontal'
-        // Check for vertical (0, ±1) - very small x component
-        if (Math.abs(nx) < 0.1) return 'vertical'
-        // Check for diagonal (±1, ±1) - 45 degrees, equal x and y components
-        if (Math.abs(Math.abs(nx) - Math.abs(ny)) < 0.2) return 'diagonal'
-        
-        // Default to closest metro direction
-        if (Math.abs(nx) > Math.abs(ny)) return 'horizontal'
-        return 'vertical'
-      }
 
-      // Helper function to get metro-compliant perpendicular offset direction in Web Mercator space
-      const getMetroPerpendicularOffset = (segmentDirection: 'horizontal' | 'vertical' | 'diagonal', startPos: LngLat, endPos: LngLat): { x: number; y: number } => {
-        // Convert to Mercator for true visual calculations
-        const startMerc = MercatorCoordinate.fromLngLat([startPos.lng, startPos.lat], 0)
-        const endMerc = MercatorCoordinate.fromLngLat([endPos.lng, endPos.lat], 0)
+      // Helper function to calculate a consistent offset direction for the entire route
+      const calculateRouteOffsetDirection = (
+        routePoints: Array<{
+          pos: LngLat;
+          mercator: { x: number; y: number; z: number; meterInMercatorCoordinateUnits: () => number };
+          segmentIndex: number;
+          pointIndex: number;
+          corridorInfo: ReturnType<typeof getCorridorBandInfo>;
+          isStation: boolean;
+        }>,
+        fallbackCorridorInfo: typeof routeCorridorInfo
+      ): { x: number; y: number } | null => {
+        if (routePoints.length < 2) return null
+        
+        // Try to get corridor direction from any point that has corridor info
+        for (const point of routePoints) {
+          const corridorInfo = point.corridorInfo || fallbackCorridorInfo
+          if (corridorInfo) {
+            const direction = corridorInfo.direction
+            
+            // Calculate perfectly perpendicular direction (exact 90 degree rotation in Mercator space)
+            const perpX = -direction.y
+            const perpY = direction.x
+            
+            // Force snap to exact perpendicular directions for perfect straight lines
+            const length = Math.hypot(perpX, perpY)
+            if (length > 0) {
+              const normalizedX = perpX / length
+              const normalizedY = perpY / length
+              
+              // Snap to exact perpendicular directions to ensure perfect straight line offsets
+              if (Math.abs(normalizedX) > Math.abs(normalizedY)) {
+                // More horizontal - force pure horizontal
+                return { x: normalizedX > 0 ? 1 : -1, y: 0 }
+              } else {
+                // More vertical - force pure vertical
+                return { x: 0, y: normalizedY > 0 ? 1 : -1 }
+              }
+            }
+          }
+        }
+        
+        // Fallback: calculate direction from overall route trend with strict perpendicular snapping
+        const firstPoint = routePoints[0]
+        const lastPoint = routePoints[routePoints.length - 1]
+        
+        const startMerc = MercatorCoordinate.fromLngLat([firstPoint.pos.lng, firstPoint.pos.lat], 0)
+        const endMerc = MercatorCoordinate.fromLngLat([lastPoint.pos.lng, lastPoint.pos.lat], 0)
         
         const dx_m = endMerc.x - startMerc.x
         const dy_m = endMerc.y - startMerc.y
         const length_m = Math.hypot(dx_m, dy_m)
         
-        if (length_m === 0) return { x: 0, y: 1 } // Default vertical offset
+        if (length_m === 0) return null
         
-        const nx = dx_m / length_m
-        const ny = dy_m / length_m
+        // Determine primary route direction and calculate exact perpendicular
+        const normalizedX = dx_m / length_m
+        const normalizedY = dy_m / length_m
         
-        // Calculate true perpendicular in Mercator space (rotate 90 degrees counterclockwise)
-        const perpX = -ny  // Left normal
-        const perpY = nx   // Left normal
+        // Snap route direction to exact metro directions first
+        let routeDirection: { x: number; y: number }
         
-        switch (segmentDirection) {
-          case 'horizontal':
-            // For horizontal segments, use pure vertical offset
-            return { x: 0, y: perpY > 0 ? 1 : -1 }
-          case 'vertical':
-            // For vertical segments, use pure horizontal offset
-            return { x: perpX > 0 ? 1 : -1, y: 0 }
-          case 'diagonal': {
-            // For diagonal segments, use true perpendicular direction
-            // but snap to the nearest 45-degree increment for visual consistency
-            const angle = Math.atan2(perpY, perpX)
-            const quarterPi = Math.PI / 4
-            
-            // Round to nearest 45-degree angle
-            const snapAngle = Math.round(angle / quarterPi) * quarterPi
-            
-            return {
-              x: Math.cos(snapAngle),
-              y: Math.sin(snapAngle)
-            }
+        if (Math.abs(normalizedY) < 0.1) {
+          // Horizontal route
+          routeDirection = { x: normalizedX > 0 ? 1 : -1, y: 0 }
+        } else if (Math.abs(normalizedX) < 0.1) {
+          // Vertical route
+          routeDirection = { x: 0, y: normalizedY > 0 ? 1 : -1 }
+        } else if (Math.abs(Math.abs(normalizedX) - Math.abs(normalizedY)) < 0.1) {
+          // 45-degree diagonal route
+          routeDirection = { 
+            x: normalizedX > 0 ? Math.SQRT1_2 : -Math.SQRT1_2, 
+            y: normalizedY > 0 ? Math.SQRT1_2 : -Math.SQRT1_2 
           }
-          default:
-            // Fallback: use computed perpendicular
-            return { x: perpX, y: perpY }
+        } else {
+          // Force to closest metro direction
+          if (Math.abs(normalizedX) > Math.abs(normalizedY)) {
+            routeDirection = { x: normalizedX > 0 ? 1 : -1, y: 0 }
+          } else {
+            routeDirection = { x: 0, y: normalizedY > 0 ? 1 : -1 }
+          }
         }
+        
+        // Calculate exact perpendicular to the snapped route direction
+        const perpX = -routeDirection.y
+        const perpY = routeDirection.x
+        
+        return { x: perpX, y: perpY }
       }
 
       // SOPHISTICATED METRO-ANGLE PRESERVING RENDERING SYSTEM
@@ -1427,24 +1515,17 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
         }
       }
 
-      // Second pass: calculate metro-angle preserving offsets using true segment-based approach
-      // This ensures all points in a segment get the same offset direction for perfect alignment
+      // Second pass: calculate metro-angle preserving offsets using consistent route-wide approach
+      // This ensures all points in a route get the same offset direction for perfect alignment
       const processedPoints: THREE.Vector3[] = new Array(routePoints.length)
       
-      // Process each segment and apply consistent offsets to both endpoints
+      // Calculate a single consistent offset direction for the entire route
+      const routeOffsetDir = calculateRouteOffsetDirection(routePoints, routeCorridorInfo)
+      
+      // Process each segment and apply the consistent offset to both endpoints
       for (let i = 0; i < routePoints.length - 1; i++) {
         const startPoint = routePoints[i]
         const endPoint = routePoints[i + 1]
-        
-        // Calculate segment direction in Web Mercator space for consistent direction detection
-        const startMerc = MercatorCoordinate.fromLngLat([startPoint.pos.lng, startPoint.pos.lat], 0)
-        const endMerc = MercatorCoordinate.fromLngLat([endPoint.pos.lng, endPoint.pos.lat], 0)
-        const dx_m = endMerc.x - startMerc.x
-        const dy_m = endMerc.y - startMerc.y
-        
-        // Determine metro direction type and get proper perpendicular offset for this segment
-        const metroDir = getMetroDirection(dx_m, dy_m)
-        const offsetDir = getMetroPerpendicularOffset(metroDir, startPoint.pos, endPoint.pos)
         
         // Process start point if not already processed
         if (!processedPoints[i]) {
@@ -1452,36 +1533,36 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
           let offsetX = 0, offsetY = 0
           
           const corridorInfo = startPoint.corridorInfo || routeCorridorInfo
-          if (corridorInfo) {
+          if (corridorInfo && routeOffsetDir) {
             const { bandIndex, bandSize, spacing } = corridorInfo
             const centeredIdx = bandIndex - (bandSize - 1) / 2
             const offsetMeters = centeredIdx * spacing
             const metersToMerc = merc.meterInMercatorCoordinateUnits()
             
-            // Apply true perpendicular offset in Mercator space
-            offsetX = offsetDir.x * offsetMeters * metersToMerc
-            offsetY = offsetDir.y * offsetMeters * metersToMerc
+            // Apply consistent route-wide offset direction
+            offsetX = routeOffsetDir.x * offsetMeters * metersToMerc
+            offsetY = routeOffsetDir.y * offsetMeters * metersToMerc
           }
           
           const z = merc.z - merc.meterInMercatorCoordinateUnits() * 5
           processedPoints[i] = new THREE.Vector3(merc.x + offsetX, merc.y + offsetY, z)
         }
         
-        // Process end point using THE SAME segment direction and offset
+        // Process end point using THE SAME route-wide offset direction
         if (!processedPoints[i + 1]) {
           const merc = endPoint.mercator
           let offsetX = 0, offsetY = 0
           
           const corridorInfo = endPoint.corridorInfo || routeCorridorInfo
-          if (corridorInfo) {
+          if (corridorInfo && routeOffsetDir) {
             const { bandIndex, bandSize, spacing } = corridorInfo
             const centeredIdx = bandIndex - (bandSize - 1) / 2
             const offsetMeters = centeredIdx * spacing
             const metersToMerc = merc.meterInMercatorCoordinateUnits()
             
-            // Apply THE SAME perpendicular offset as start point for perfect alignment
-            offsetX = offsetDir.x * offsetMeters * metersToMerc
-            offsetY = offsetDir.y * offsetMeters * metersToMerc
+            // Apply THE SAME consistent route-wide offset direction
+            offsetX = routeOffsetDir.x * offsetMeters * metersToMerc
+            offsetY = routeOffsetDir.y * offsetMeters * metersToMerc
           }
           
           const z = merc.z - merc.meterInMercatorCoordinateUnits() * 5
