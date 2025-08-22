@@ -700,7 +700,79 @@ body {
   transform: translateY(0);
 }
 
+/* Selected Station Info Box */
+.selected-station-info {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  border: 1px solid #e0e0e0;
+  min-width: 280px;
+  z-index: 1000;
+  padding: 12px 16px;
+  pointer-events: auto;
+}
+
+.selected-station-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.deselect-btn {
+  background: none;
+  border: none;
+  font-size: 18px;
+  font-weight: bold;
+  color: #999;
+  cursor: pointer;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.15s ease;
+}
+
+.deselect-btn:hover {
+  background: #f5f5f5;
+  color: #666;
+}
+
+.selected-station-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.station-info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 20px;
+}
+
+.station-info-row .station-name {
+  color: #333;
+  font-size: 13px;
+  font-weight: 500;
+}
+
 @media (max-width: 480px) {
+  .selected-station-info {
+    bottom: 10px;
+    left: 10px;
+    right: 10px;
+    transform: none;
+    min-width: unset;
+  }
+
   .game-over-screen {
     margin: 16px;
     width: calc(100vw - 32px);

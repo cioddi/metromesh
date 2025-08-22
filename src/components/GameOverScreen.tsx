@@ -1,4 +1,5 @@
 import { useGameStore } from '../store/gameStore';
+import { useMapNavigation } from '../hooks/useMapNavigation';
 
 function formatTime(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
@@ -8,6 +9,12 @@ function formatTime(seconds: number): string {
 
 export default function GameOverScreen() {
   const { gameOverStats, gameOverReason, resetGame } = useGameStore();
+  const { resetMapToDefault } = useMapNavigation();
+
+  const handleNewGame = () => {
+    resetGame();
+    resetMapToDefault();
+  };
 
   if (!gameOverStats) return null;
 
@@ -48,7 +55,7 @@ export default function GameOverScreen() {
           <div className="game-over-actions">
             <button 
               className="restart-btn"
-              onClick={resetGame}
+              onClick={handleNewGame}
             >
               Start New Game
             </button>

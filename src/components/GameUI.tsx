@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import type { GameState } from '../types';
-import StationStats from './StationStats';
 
 interface GameUIProps {
   gameState: GameState;
@@ -95,7 +94,6 @@ export default function GameUI({ gameState, onStationSelectFromList }: GameUIPro
             </div>
           </div>
         )}
-        <StationStats />
       </div>
     );
   }
@@ -162,7 +160,6 @@ export default function GameUI({ gameState, onStationSelectFromList }: GameUIPro
           <span>Trains pick up waiting passengers</span>
         </div>
       </div>
-      <StationStats />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import GameThreeLayer from "./GameThreeLayer";
 import GameUI from "./GameUI";
 import StationDragHandler from "./StationDragHandler";
 import GameOverScreen from "./GameOverScreen";
+import StationStats from "./StationStats";
 import { useGameStore, ROUTE_COLORS } from "../store/gameStore";
 import { useMapNavigation } from "../hooks/useMapNavigation";
 import { GAME_CONFIG } from "../config/gameConfig";
@@ -177,6 +178,8 @@ export default function Game() {
         onCreateRoute={handleCreateRoute}
         onStationSelectFromList={handleStationSelectFromList}
       />
+
+      <StationStats />
       
       {isGameOver && <GameOverScreen />}
     </>
