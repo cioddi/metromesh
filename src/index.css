@@ -9,6 +9,7 @@
   max-width: 95vw;
   z-index: 2100;
   position: relative;
+  pointer-events: auto;
 }
 /* --- Mobile MetroMesh UI Styles --- */
 .game-ui-mobile {
@@ -275,8 +276,9 @@ body {
 
 /* Header with logo and stats */
 .legend-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(180deg, #ffffff 0%,#ffffff 40%, #122268 100%);
   color: white;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   padding: 16px;
   text-align: center;
 }
@@ -764,14 +766,41 @@ body {
   font-weight: 500;
 }
 
-@media (max-width: 480px) {
+@media (max-width: 768px) {
   .selected-station-info {
     bottom: 10px;
     left: 10px;
     right: 10px;
     transform: none;
     min-width: unset;
+    padding: 10px 12px;
+    font-size: 14px;
   }
+
+  .selected-station-header .section-title {
+    font-size: 15px;
+  }
+
+  .deselect-btn {
+    font-size: 16px;
+    width: 24px;
+    height: 24px;
+  }
+
+  .station-info-row .station-name {
+    font-size: 14px;
+  }
+
+  .route-dot {
+    width: 10px;
+    height: 10px;
+  }
+
+  .passenger-badge {
+    font-size: 11px;
+    padding: 3px 7px;
+  }
+}
 
   .game-over-screen {
     margin: 16px;

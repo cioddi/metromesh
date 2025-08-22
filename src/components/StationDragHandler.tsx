@@ -58,6 +58,9 @@ function StationDragHandler({ stations, routes, onCreateRoute, onExtendRoute }: 
       // First, check if clicking on a route endpoint
       const routeEnd = findClosestRouteEnd(pointLngLat, routes, stations, 150); // Larger click area
       if (routeEnd) {
+        // Disable map dragging during station drag
+        map.dragPan.disable();
+        
         setDragState({
           isDragging: true,
           startStation: routeEnd.stationId,
@@ -75,6 +78,9 @@ function StationDragHandler({ stations, routes, onCreateRoute, onExtendRoute }: 
       const closestStation = findClosestStation(pointLngLat, stations, 150); // Larger click area
       
       if (closestStation) {
+        // Disable map dragging during station drag
+        map.dragPan.disable();
+        
         setDragState({
           isDragging: true,
           startStation: closestStation.id,
@@ -169,6 +175,11 @@ function StationDragHandler({ stations, routes, onCreateRoute, onExtendRoute }: 
         }
       }
 
+      // Re-enable map dragging
+      if (currentDragState.isDragging) {
+        map.dragPan.enable();
+      }
+
       setDragState({
         isDragging: false,
         startStation: null,
@@ -186,6 +197,7 @@ function StationDragHandler({ stations, routes, onCreateRoute, onExtendRoute }: 
     const handleTouchMove = (e: TouchEvent) => {
       if (dragStateRef.current.isDragging) {
         e.preventDefault(); // Prevent map panning while dragging
+        e.stopPropagation(); // Stop event from reaching map
       }
       if (e.touches.length === 1) {
         const touch = e.touches[0];

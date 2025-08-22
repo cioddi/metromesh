@@ -361,21 +361,16 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
     }
   }, [mapContext?.map])
 
-  // Add click handling
+  // Add click and touch handling for station selection
   useEffect(() => {
     if (!mapContext?.map || !onStationClick) return
 
     const map = mapContext.map
 
-    const handleMapClick = (e: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
-      // Get click coordinates relative to canvas
-      const rect = map.getCanvas().getBoundingClientRect()
-      const x = e.originalEvent.clientX - rect.left
-      const y = e.originalEvent.clientY - rect.top
-      
-      // Convert screen coordinates to map coordinates (same as StationDragHandler)
-      const point = map.unproject([x, y])
-      const pointLngLat = { lng: point.lng, lat: point.lat }
+    const handleMapInteraction = (e: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+      // MapLibre's click event already handles both mouse and touch
+      // and provides normalized coordinates in e.point
+      const pointLngLat = e.lngLat
       
       // Find closest station within reasonable distance (same as StationDragHandler)
       const closestStation = findClosestStation(pointLngLat, gameData.stations, 150) // 150m radius
@@ -388,10 +383,11 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
       }
     }
 
-    map.on('click', handleMapClick)
+    // Handle both mouse clicks and touch taps using MapLibre's unified events
+    map.on('click', handleMapInteraction)
 
     return () => {
-      map.off('click', handleMapClick)
+      map.off('click', handleMapInteraction)
     }
   }, [mapContext?.map, onStationClick, gameData.stations])
 
