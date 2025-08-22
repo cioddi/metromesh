@@ -25,7 +25,7 @@ export const MAP_CENTER: LngLat = {
 export const GAME_CONFIG = {
   stationSpawnProbability: 0.0015, // Per game loop cycle (100ms) - half the rate
   passengerSpawnProbability: 0.065, // Balanced spawn rate for optimal gameplay
-  maxStations: 8,
+  maxStations: 12,
   initialZoom: 13,
   maxZoom: 16,
   gameLoopInterval: 100, // milliseconds

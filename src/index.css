@@ -276,7 +276,7 @@ body {
 
 /* Header with logo and stats */
 .legend-header {
-  background: linear-gradient(180deg, #ffffff 0%,#ffffff 40%, #36b6e7 100%);
+  background: linear-gradient(180deg, #ffffff 0%,#ffffff 40%, #36b6e7 70%, #764ba2 90%);
   color: white;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   padding: 16px;
@@ -647,7 +647,7 @@ body {
 }
 
 .stats-grid {
-  display: grid;
+  display: flex;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
   margin-bottom: 24px;

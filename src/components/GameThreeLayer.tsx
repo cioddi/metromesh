@@ -1269,6 +1269,13 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
       }
 
       // PHASE 6: Sophisticated Band Assignment for 8+ Routes using Attachment Points
+      interface RouteScore {
+        routeId: string
+        geometricScore: number // Based on position relative to corridor
+        attachmentScore: number // Based on attachment point alignment
+        crossoverPenalty: number // Penalty for potential crossovers
+        totalScore: number
+      }
       const routeCorridorBands = new Map<string, Map<string, number>>() // corridorId -> routeId -> bandIndex
 
       for (const corridor of corridors) {
@@ -1278,14 +1285,6 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
         if (corridor.microSegments.length === 0 || numRoutes === 0) continue
         
         // 🎨 ADVANCED MULTI-CRITERIA ROUTE SCORING FOR 8+ ROUTES
-        interface RouteScore {
-          routeId: string
-          geometricScore: number // Based on position relative to corridor
-          attachmentScore: number // Based on attachment point alignment
-          crossoverPenalty: number // Penalty for potential crossovers
-          totalScore: number
-        }
-        
         const routeScores: RouteScore[] = []
         
         // Calculate comprehensive scores for each route
@@ -1408,7 +1407,7 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
           let penalty = 0
           
           // Crossover penalty
-          penalty += detectAdvancedCrossovers(ordering, routes, ST, corridor) * 1000
+          penalty += detectAdvancedCrossovers(ordering, routes) * 1000
           
           // Geometric constraint penalty  
           penalty += checkAdvancedGeometricConstraints(ordering, routes, ST) * 500
@@ -1460,8 +1459,6 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
       function detectAdvancedCrossovers(
         ordering: RouteScore[],
         allRoutes: Route[],
-        stationMap: Map<string, { id: string; position: LngLat; color: string; passengerCount: number }>,
-        corridor: Corridor
       ): number {
         let crossoverCount = 0
         
@@ -1735,23 +1732,6 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
         const perpY = direction.x
         
         return dx * perpX + dy * perpY
-      }
-
-      // Helper function for signed distance calculation (same as before)
-      function signedDistanceToLine(
-        a: { position: LngLat },
-        b: { position: LngLat },
-        p: { position: LngLat }
-      ) {
-        const ax = a.position.lng, ay = a.position.lat
-        const bx = b.position.lng, by = b.position.lat
-        const px = p.position.lng, py = p.position.lat
-
-        const vx = bx - ax, vy = by - ay
-        const wx = px - ax, wy = py - ay
-        const L = Math.hypot(vx, vy) || 1
-        const nx = -vy / L, ny = vx / L
-        return wx * nx + wy * ny
       }
 
       // 🎆 RETURN SOPHISTICATED TOPOLOGY WITH ATTACHMENT GRID SYSTEM
@@ -2030,7 +2010,6 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
       const validateAndCorrectStationConnections = (points: THREE.Vector3[]): THREE.Vector3[] => {
         // Debug: Check if the route has proper parallel spacing
         if (points.length >= 2) {
-          let hasOffset = false
           for (let i = 0; i < points.length - 1; i++) {
             const dx = points[i + 1].x - points[i].x
             const dy = points[i + 1].y - points[i].y
@@ -2050,22 +2029,8 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
               }
             }
             
-            // Check if this point has been offset (not at exact station positions)
-            if (i === 0 && routeStations.length > 0) {
-              const stationPos = routeStations[0].position
-              const stationMerc = MercatorCoordinate.fromLngLat([stationPos.lng, stationPos.lat], 0)
-              const pointDist = Math.hypot(points[i].x - stationMerc.x, points[i].y - stationMerc.y)
-              if (pointDist > 0.0001) {
-                hasOffset = true
-              }
-            }
           }
           
-          if (hasOffset) {
-            console.log(`✅ Route ${route.id} has parallel offset applied`)
-          } else {
-            console.log(`⚠️  Route ${route.id} appears to have no parallel offset`)
-          }
         }
         
         return points

@@ -128,8 +128,8 @@ export default function Game() {
       // Adjust these thresholds based on typical building counts in your map
       let rawDensity;
       if (buildingCount <= 2) rawDensity = 0.3;      // Low density
-      else if (buildingCount <= 8) rawDensity = 0.5; // Medium density  
-      else if (buildingCount <= 15) rawDensity = 0.7; // High density
+      else if (buildingCount <= 6) rawDensity = 0.5; // Medium density  
+      else if (buildingCount <= 12) rawDensity = 0.7; // High density
       else rawDensity = 1.0;                         // Urban core
       
       // Apply final scaling to 0.2-1.0 range
