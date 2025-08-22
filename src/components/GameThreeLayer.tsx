@@ -35,9 +35,19 @@ function createMetroRouteCoordinates(start: LngLat, target: LngLat): number[][] 
   // Go 45 degrees until we align with target on one axis
   const diagonalDistance = Math.min(absDx, absDy);
   
-  // Calculate the corner point
-  const cornerLng = start.lng + diagonalDx * diagonalDistance;
-  const cornerLat = start.lat + diagonalDy * diagonalDistance;
+  // Calculate the corner point with perfect alignment
+  let cornerLng: number;
+  let cornerLat: number;
+  
+  if (absDx < absDy) {
+    // Diagonal stops when we reach target longitude - ensure perfect vertical alignment for final segment
+    cornerLng = target.lng;
+    cornerLat = start.lat + diagonalDy * diagonalDistance;
+  } else {
+    // Diagonal stops when we reach target latitude - ensure perfect horizontal alignment for final segment
+    cornerLng = start.lng + diagonalDx * diagonalDistance;
+    cornerLat = target.lat;
+  }
   
   // Add the corner point
   coordinates.push([cornerLng, cornerLat]);
@@ -986,6 +996,21 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
 
       const points: THREE.Vector3[] = []
       const routeMicros = advancedTopo.routeMicroSegments.get(route.id) || []
+      
+      // Get route's corridor information as fallback for points without individual corridor info
+      const routeCorridorInfo = routeMicros.length > 0 ? (() => {
+        const firstMicro = routeMicros[0]
+        const corridorsForMicro = advancedTopo.microToCorridors.get(firstMicro.id) || []
+        if (corridorsForMicro.length > 0) {
+          const corridor = corridorsForMicro[0]
+          const bandIndex = advancedTopo.routeCorridorBands.get(corridor.id)?.get(route.id) ?? 0
+          const bandSize = corridor.routes.size
+          const isDiagonal = Math.abs(Math.abs(corridor.averageDirection.x) - Math.abs(corridor.averageDirection.y)) < 0.3
+          const spacing = isDiagonal ? 50 : 25
+          return { bandIndex, bandSize, spacing, direction: corridor.averageDirection }
+        }
+        return null
+      })() : null
 
       // Helper function to find the nearest micro-segment to a given position
       const findNearestMicroSegment = (pos: LngLat): MicroSegment | null => {
@@ -1114,54 +1139,108 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
         }
       }
 
-      // Second pass: calculate metro-angle preserving offsets
-      for (let i = 0; i < routePoints.length; i++) {
-        const point = routePoints[i]
-        const merc = point.mercator
-
-        // Determine local metro direction and offset
-        let offsetX = 0, offsetY = 0
-
-        if (point.corridorInfo) {
-          const { bandIndex, bandSize, spacing } = point.corridorInfo
-          const centeredIdx = bandIndex - (bandSize - 1) / 2
-          const offsetMeters = centeredIdx * spacing
-
-          // Calculate direction for offset
-          let dx = 0, dy = 0
+      // Second pass: calculate metro-angle preserving offsets using true segment-based approach
+      // This ensures all points in a segment get the same offset direction for perfect alignment
+      const processedPoints: THREE.Vector3[] = new Array(routePoints.length)
+      
+      // Process each segment and apply consistent offsets to both endpoints
+      for (let i = 0; i < routePoints.length - 1; i++) {
+        const startPoint = routePoints[i]
+        const endPoint = routePoints[i + 1]
+        
+        // Calculate segment direction
+        const dx = endPoint.pos.lng - startPoint.pos.lng
+        const dy = endPoint.pos.lat - startPoint.pos.lat
+        
+        // Determine metro direction type and get proper perpendicular offset for this segment
+        const metroDir = getMetroDirection(dx, dy)
+        const offsetDir = getMetroPerpendicularOffset(metroDir, dx, dy)
+        
+        // Process start point if not already processed
+        if (!processedPoints[i]) {
+          const merc = startPoint.mercator
+          let offsetX = 0, offsetY = 0
           
-          // Get direction from neighboring points
-          if (i === 0 && i < routePoints.length - 1) {
-            // First point - use direction to next point
-            const nextPoint = routePoints[i + 1]
-            dx = nextPoint.pos.lng - point.pos.lng
-            dy = nextPoint.pos.lat - point.pos.lat
-          } else if (i === routePoints.length - 1 && i > 0) {
-            // Last point - use direction from previous point
-            const prevPoint = routePoints[i - 1]
-            dx = point.pos.lng - prevPoint.pos.lng
-            dy = point.pos.lat - prevPoint.pos.lat
-          } else if (i > 0 && i < routePoints.length - 1) {
-            // Middle point - use average direction
-            const prevPoint = routePoints[i - 1]
-            const nextPoint = routePoints[i + 1]
-            dx = (nextPoint.pos.lng - prevPoint.pos.lng) * 0.5
-            dy = (nextPoint.pos.lat - prevPoint.pos.lat) * 0.5
+          const corridorInfo = startPoint.corridorInfo || routeCorridorInfo
+          if (corridorInfo) {
+            const { bandIndex, bandSize, spacing } = corridorInfo
+            const centeredIdx = bandIndex - (bandSize - 1) / 2
+            const offsetMeters = centeredIdx * spacing
+            const metersToMerc = merc.meterInMercatorCoordinateUnits()
+            
+            // Apply segment-based offset - only horizontal or vertical, never diagonal
+            if (metroDir === 'horizontal') {
+              offsetX = 0 // No x-offset for horizontal segments
+              offsetY = offsetDir.y * offsetMeters * metersToMerc
+            } else if (metroDir === 'vertical') {
+              offsetX = offsetDir.x * offsetMeters * metersToMerc
+              offsetY = 0 // No y-offset for vertical segments
+            } else {
+              // For diagonal segments, choose dominant direction (horizontal or vertical only)
+              if (Math.abs(dx) > Math.abs(dy)) {
+                // Treat as horizontal
+                offsetX = 0
+                offsetY = (dy > 0 ? 1 : -1) * offsetMeters * metersToMerc
+              } else {
+                // Treat as vertical
+                offsetX = (dx > 0 ? 1 : -1) * offsetMeters * metersToMerc
+                offsetY = 0
+              }
+            }
           }
-
-          // Determine metro direction type and get proper perpendicular offset
-          const metroDir = getMetroDirection(dx, dy)
-          const offsetDir = getMetroPerpendicularOffset(metroDir, dx, dy)
-
-          // Apply metro-compliant offset
-          const metersToMerc = merc.meterInMercatorCoordinateUnits()
-          offsetX = offsetDir.x * offsetMeters * metersToMerc
-          offsetY = offsetDir.y * offsetMeters * metersToMerc
+          
+          const z = merc.z - merc.meterInMercatorCoordinateUnits() * 5
+          processedPoints[i] = new THREE.Vector3(merc.x + offsetX, merc.y + offsetY, z)
         }
-
-        const z = merc.z - merc.meterInMercatorCoordinateUnits() * 5
-        points.push(new THREE.Vector3(merc.x + offsetX, merc.y + offsetY, z))
+        
+        // Process end point using THE SAME segment direction and offset
+        if (!processedPoints[i + 1]) {
+          const merc = endPoint.mercator
+          let offsetX = 0, offsetY = 0
+          
+          const corridorInfo = endPoint.corridorInfo || routeCorridorInfo
+          if (corridorInfo) {
+            const { bandIndex, bandSize, spacing } = corridorInfo
+            const centeredIdx = bandIndex - (bandSize - 1) / 2
+            const offsetMeters = centeredIdx * spacing
+            const metersToMerc = merc.meterInMercatorCoordinateUnits()
+            
+            // Apply THE SAME segment-based offset as start point for perfect alignment
+            if (metroDir === 'horizontal') {
+              offsetX = 0 // No x-offset for horizontal segments
+              offsetY = offsetDir.y * offsetMeters * metersToMerc
+            } else if (metroDir === 'vertical') {
+              offsetX = offsetDir.x * offsetMeters * metersToMerc
+              offsetY = 0 // No y-offset for vertical segments
+            } else {
+              // For diagonal segments, use THE SAME logic as start point (horizontal or vertical only)
+              if (Math.abs(dx) > Math.abs(dy)) {
+                // Treat as horizontal
+                offsetX = 0
+                offsetY = (dy > 0 ? 1 : -1) * offsetMeters * metersToMerc
+              } else {
+                // Treat as vertical
+                offsetX = (dx > 0 ? 1 : -1) * offsetMeters * metersToMerc
+                offsetY = 0
+              }
+            }
+          }
+          
+          const z = merc.z - merc.meterInMercatorCoordinateUnits() * 5
+          processedPoints[i + 1] = new THREE.Vector3(merc.x + offsetX, merc.y + offsetY, z)
+        }
       }
+      
+      // Handle single-point routes
+      if (routePoints.length === 1) {
+        const point = routePoints[0]
+        const merc = point.mercator
+        const z = merc.z - merc.meterInMercatorCoordinateUnits() * 5
+        processedPoints[0] = new THREE.Vector3(merc.x, merc.y, z)
+      }
+      
+      // Fill points array
+      points.push(...processedPoints)
 
       // Create the route line
       const geometry = new THREE.BufferGeometry().setFromPoints(points)
