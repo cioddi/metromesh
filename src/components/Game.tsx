@@ -305,8 +305,12 @@ export default function Game() {
     if (!pending) return
 
     if (pending.isExtension) {
-      // Extend the selected route
-      extendRoute(selectedRouteId, pending.endStationId, pending.atEnd || false)
+      // Extend the selected route - determine which end based on start station position
+      const selectedRoute = routes.find(r => r.id === selectedRouteId)
+      if (selectedRoute) {
+        const isAtEnd = selectedRoute.stations[selectedRoute.stations.length - 1] === pending.startStationId
+        extendRoute(selectedRouteId, pending.endStationId, isAtEnd)
+      }
     } else {
       // This case shouldn't happen as we're replacing new route creation logic,
       // but handle it gracefully

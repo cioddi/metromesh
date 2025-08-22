@@ -172,6 +172,20 @@ function StationDragHandler({ stations, routes, onCreateRoute, onExtendRoute, on
       updateDragPosition(pointLngLat);
     };
 
+    // Helper function to check if a route already connects two stations
+    const routeConnectsStations = (route: typeof routes[0], stationId1: string, stationId2: string): boolean => {
+      const stations = route.stations;
+      for (let i = 0; i < stations.length - 1; i++) {
+        const currentStation = stations[i];
+        const nextStation = stations[i + 1];
+        if ((currentStation === stationId1 && nextStation === stationId2) ||
+            (currentStation === stationId2 && nextStation === stationId1)) {
+          return true;
+        }
+      }
+      return false;
+    };
+
     const handleEnd = () => {
       const currentDragState = dragStateRef.current;
       if (currentDragState.isDragging && currentDragState.isValidTarget && currentDragState.targetStation) {
@@ -184,8 +198,13 @@ function StationDragHandler({ stations, routes, onCreateRoute, onExtendRoute, on
                     stations[stations.length - 1] === currentDragState.startStation);
           });
 
-          if (startStationRoutes.length > 1 && onMultiRouteConnection) {
-            // Multiple routes at this terminal - show selection popup
+          // Filter out routes that already connect to the target station
+          const viableRoutes = startStationRoutes.filter(route => 
+            !routeConnectsStations(route, currentDragState.startStation!, currentDragState.targetStation!)
+          );
+
+          if (viableRoutes.length > 1 && onMultiRouteConnection) {
+            // Multiple viable routes at this terminal - show selection popup
             const rect = canvas.getBoundingClientRect();
             const centerX = rect.left + rect.width / 2;
             const centerY = rect.top + rect.height / 2;
@@ -193,12 +212,18 @@ function StationDragHandler({ stations, routes, onCreateRoute, onExtendRoute, on
             onMultiRouteConnection(
               currentDragState.startStation!,
               currentDragState.targetStation,
-              startStationRoutes,
+              viableRoutes,
               { x: centerX, y: centerY },
               true, // isExtension
               currentDragState.fromRouteEnd.routeId,
               currentDragState.fromRouteEnd.isEnd
             );
+          } else if (viableRoutes.length === 1) {
+            // Only one viable route - determine which end to extend from start station
+            const route = viableRoutes[0];
+            const stations = route.stations;
+            const isAtEnd = stations[stations.length - 1] === currentDragState.startStation;
+            onExtendRoute(route.id, currentDragState.targetStation, isAtEnd);
           } else {
             // Single route or no multi-route handler - proceed normally
             onExtendRoute(currentDragState.fromRouteEnd.routeId, currentDragState.targetStation, currentDragState.fromRouteEnd.isEnd);
@@ -212,8 +237,13 @@ function StationDragHandler({ stations, routes, onCreateRoute, onExtendRoute, on
                     stations[stations.length - 1] === currentDragState.startStation);
           });
 
-          if (startStationRoutes.length > 0 && onMultiRouteConnection) {
-            // Station is terminal of existing routes - show selection popup to extend instead of creating new
+          // Filter out routes that already connect to the target station
+          const viableRoutes = startStationRoutes.filter(route => 
+            !routeConnectsStations(route, currentDragState.startStation!, currentDragState.targetStation!)
+          );
+
+          if (viableRoutes.length > 1 && onMultiRouteConnection) {
+            // Multiple viable routes - show selection popup to extend instead of creating new
             const rect = canvas.getBoundingClientRect();
             const centerX = rect.left + rect.width / 2;
             const centerY = rect.top + rect.height / 2;
@@ -221,12 +251,20 @@ function StationDragHandler({ stations, routes, onCreateRoute, onExtendRoute, on
             onMultiRouteConnection(
               currentDragState.startStation!,
               currentDragState.targetStation,
-              startStationRoutes,
+              viableRoutes,
               { x: centerX, y: centerY },
-              true // isExtension
+              false, // isExtension
+              undefined,
+              undefined
             );
+          } else if (viableRoutes.length === 1) {
+            // Only one viable route - extend it directly
+            const route = viableRoutes[0];
+            const stations = route.stations;
+            const isAtEnd = stations[stations.length - 1] === currentDragState.startStation;
+            onExtendRoute(route.id, currentDragState.targetStation, isAtEnd);
           } else {
-            // No existing routes at start station - create new route
+            // No viable routes - create new route
             onCreateRoute(currentDragState.startStation!, currentDragState.targetStation);
           }
         }

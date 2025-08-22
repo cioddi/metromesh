@@ -630,59 +630,327 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
       scene.add(stationObj.object3D)
     })
     
-    // Robust topology building with ordered & undirected segment keys
-    type SegmentKey = string;  // ordered:   "A->B"
-    type UKey = string;        // undirected: "A—B" (em dash for clarity)
+    // Advanced Geometric Corridor System - No longer using simple segment keys
 
-    const orderedKey = (a: string, b: string): SegmentKey => `${a}->${b}`
-    const undirectedKey = (a: string, b: string): UKey =>
-      a < b ? `${a}—${b}` : `${b}—${a}`
+    // Helper functions for geometric calculations
+    const interpolatePosition = (start: LngLat, end: LngLat, t: number): LngLat => ({
+      lng: start.lng + (end.lng - start.lng) * t,
+      lat: start.lat + (end.lat - start.lat) * t
+    })
 
+    const getDistanceInMeters = (pos1: LngLat, pos2: LngLat): number => {
+      const dlng = pos2.lng - pos1.lng
+      const dlat = pos2.lat - pos1.lat
+      
+      // Rough conversion to meters (assuming roughly 111km per degree)
+      const dxMeters = dlng * 111000 * Math.cos(pos1.lat * Math.PI / 180)
+      const dyMeters = dlat * 111000
+      
+      return Math.sqrt(dxMeters * dxMeters + dyMeters * dyMeters)
+    }
 
-    const buildRouteNetworkTopology = (
+    // Advanced Geometric Corridor Detection System for Sophisticated Parallel Route Visualization
+    
+    interface MicroSegment {
+      id: string;
+      routeId: string;
+      startPos: LngLat;
+      endPos: LngLat;
+      centerPos: LngLat;
+      direction: { x: number; y: number }; // normalized direction vector
+      length: number;
+      routeT: number; // parameter along route (0-1)
+      segmentIndex: number; // which route segment this micro-segment belongs to
+    }
+
+    interface Corridor {
+      id: string;
+      microSegments: MicroSegment[];
+      routes: Set<string>;
+      centerLine: LngLat[];
+      averageDirection: { x: number; y: number };
+    }
+
+    interface SpatialCell {
+      microSegments: MicroSegment[];
+    }
+
+    const buildAdvancedRouteCorridors = (
       routes: Route[],
       stations: Array<{ id: string; position: LngLat; color: string; passengerCount: number }>
     ) => {
-      // Quick dictionaries
+      // Quick dictionary for stations
       const ST = new Map<string, { id: string; position: LngLat; color: string; passengerCount: number }>(
         stations.map(s => [s.id, s])
       )
 
-      // Segment registries
-      const segByUKey = new Map<UKey, {
-        a: string, b: string,
-        routes: string[],         // routeIds that traverse this undirected segment
-        orderedKeys: SegmentKey[] // both directions that appear in data
-      }>()
+      // PHASE 1: Dense Route Sampling - Convert routes into micro-segments
+      const allMicroSegments: MicroSegment[] = []
+      const routeMicroSegments = new Map<string, MicroSegment[]>()
+      const SAMPLING_DISTANCE_METERS = 25 // Sample every 25 meters
 
-      const routeOrderedSegments = new Map<string, SegmentKey[]>() // routeId -> ordered segment keys
+      let microSegmentCounter = 0
 
-      // Build ordered & undirected segments, preserving direction per route
-      for (const r of routes) {
-        const segs: SegmentKey[] = []
-        for (let i = 0; i < r.stations.length - 1; i++) {
-          const a = r.stations[i], b = r.stations[i + 1]
-          const ok = orderedKey(a, b)
-          const uk = undirectedKey(a, b)
-          segs.push(ok)
+      for (const route of routes) {
+        if (route.stations.length < 2) continue
+        
+        const routeStations = route.stations.map(id => ST.get(id)).filter(Boolean)
+        if (routeStations.length < 2) continue
 
-          if (!segByUKey.has(uk)) {
-            segByUKey.set(uk, { a, b, routes: [], orderedKeys: [] })
-          }
-          const rec = segByUKey.get(uk)!
-          rec.routes.push(r.id)
-          rec.orderedKeys.push(ok)
+        const routeMicros: MicroSegment[] = []
+        let totalRouteLength = 0
+        
+        // Calculate total route length first
+        for (let i = 0; i < routeStations.length - 1; i++) {
+          const start = routeStations[i]!
+          const end = routeStations[i + 1]!
+          const segLength = getDistanceInMeters(start.position, end.position)
+          totalRouteLength += segLength
         }
-        routeOrderedSegments.set(r.id, segs)
+
+        let currentRouteDistance = 0
+
+        // Sample each segment of the route
+        for (let segIdx = 0; segIdx < routeStations.length - 1; segIdx++) {
+          const start = routeStations[segIdx]!
+          const end = routeStations[segIdx + 1]!
+          const segLength = getDistanceInMeters(start.position, end.position)
+          
+          if (segLength < 1) continue // Skip very short segments
+          
+          const numSamples = Math.max(2, Math.ceil(segLength / SAMPLING_DISTANCE_METERS))
+          
+          for (let sampleIdx = 0; sampleIdx < numSamples - 1; sampleIdx++) {
+            const t1 = sampleIdx / (numSamples - 1)
+            const t2 = (sampleIdx + 1) / (numSamples - 1)
+            
+            const startPos = interpolatePosition(start.position, end.position, t1)
+            const endPos = interpolatePosition(start.position, end.position, t2)
+            const centerPos = interpolatePosition(startPos, endPos, 0.5)
+            
+            const dx = endPos.lng - startPos.lng
+            const dy = endPos.lat - startPos.lat
+            const len = Math.hypot(dx, dy)
+            
+            const microSeg: MicroSegment = {
+              id: `micro-${microSegmentCounter++}`,
+              routeId: route.id,
+              startPos,
+              endPos,
+              centerPos,
+              direction: len > 0 ? { x: dx / len, y: dy / len } : { x: 1, y: 0 },
+              length: len,
+              routeT: (currentRouteDistance + (sampleIdx / (numSamples - 1)) * segLength) / totalRouteLength,
+              segmentIndex: segIdx
+            }
+            
+            routeMicros.push(microSeg)
+            allMicroSegments.push(microSeg)
+          }
+          
+          currentRouteDistance += segLength
+        }
+        
+        routeMicroSegments.set(route.id, routeMicros)
       }
 
-      // Helper: signed distance of a point to infinite line AB in meters (Mercator-ish, planar enough at city scale)
+      // PHASE 2: Spatial Indexing - Build spatial grid for efficient proximity queries
+      const GRID_SIZE = 0.001 // ~100m grid cells in degrees
+      const spatialGrid = new Map<string, SpatialCell>()
+
+      const getGridKey = (pos: LngLat) => {
+        const x = Math.floor(pos.lng / GRID_SIZE)
+        const y = Math.floor(pos.lat / GRID_SIZE) 
+        return `${x},${y}`
+      }
+
+      const getNeighborGridKeys = (pos: LngLat) => {
+        const cx = Math.floor(pos.lng / GRID_SIZE)
+        const cy = Math.floor(pos.lat / GRID_SIZE)
+        const keys: string[] = []
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dy = -1; dy <= 1; dy++) {
+            keys.push(`${cx + dx},${cy + dy}`)
+          }
+        }
+        return keys
+      }
+
+      // Index all micro-segments in spatial grid
+      for (const micro of allMicroSegments) {
+        const key = getGridKey(micro.centerPos)
+        if (!spatialGrid.has(key)) {
+          spatialGrid.set(key, { microSegments: [] })
+        }
+        spatialGrid.get(key)!.microSegments.push(micro)
+      }
+
+      // PHASE 3: Parallelism Detection - Find parallel and nearby micro-segments
+      const PROXIMITY_THRESHOLD_METERS = 100 // Consider segments within 100m
+      const PARALLEL_ANGLE_THRESHOLD = Math.PI / 8 // ~22.5 degrees
+      
+      const parallelPairs: Array<{ a: MicroSegment; b: MicroSegment; distance: number; similarity: number }> = []
+
+      for (const microA of allMicroSegments) {
+        const nearbyKeys = getNeighborGridKeys(microA.centerPos)
+        
+        for (const key of nearbyKeys) {
+          const cell = spatialGrid.get(key)
+          if (!cell) continue
+          
+          for (const microB of cell.microSegments) {
+            // Skip same route and same micro-segment
+            if (microA.routeId === microB.routeId || microA.id === microB.id) continue
+            
+            // Check if we already processed this pair
+            if (microA.id > microB.id) continue
+            
+            const distance = getDistanceInMeters(microA.centerPos, microB.centerPos)
+            if (distance > PROXIMITY_THRESHOLD_METERS) continue
+            
+            // Check parallelism - compute angle between direction vectors
+            const dotProduct = microA.direction.x * microB.direction.x + microA.direction.y * microB.direction.y
+            const angleDiff = Math.acos(Math.min(1, Math.max(-1, Math.abs(dotProduct))))
+            
+            if (angleDiff < PARALLEL_ANGLE_THRESHOLD) {
+              const similarity = 1 - (angleDiff / PARALLEL_ANGLE_THRESHOLD) // 1 = perfectly parallel, 0 = at threshold
+              parallelPairs.push({ a: microA, b: microB, distance, similarity })
+            }
+          }
+        }
+      }
+
+      // PHASE 4: Corridor Construction - Group parallel micro-segments into corridors
+      const corridors: Corridor[] = []
+      const microToCorridors = new Map<string, Corridor[]>()
+      let corridorIdCounter = 0
+
+      // Use Union-Find to group connected parallel segments
+      const corridorGroups = new Map<string, Set<MicroSegment>>()
+      const parent = new Map<string, string>()
+      
+      const find = (id: string): string => {
+        if (!parent.has(id)) {
+          parent.set(id, id)
+          return id
+        }
+        if (parent.get(id) !== id) {
+          parent.set(id, find(parent.get(id)!))
+        }
+        return parent.get(id)!
+      }
+
+      const union = (a: string, b: string) => {
+        const rootA = find(a)
+        const rootB = find(b)
+        if (rootA !== rootB) {
+          parent.set(rootB, rootA)
+        }
+      }
+
+      // Group parallel micro-segments
+      for (const pair of parallelPairs) {
+        union(pair.a.id, pair.b.id)
+      }
+
+      // Collect groups
+      for (const micro of allMicroSegments) {
+        const root = find(micro.id)
+        if (!corridorGroups.has(root)) {
+          corridorGroups.set(root, new Set())
+        }
+        corridorGroups.get(root)!.add(micro)
+      }
+
+      // Create corridors from groups (only multi-route groups)
+      for (const [, microSet] of corridorGroups) {
+        const micros = Array.from(microSet)
+        const routes = new Set(micros.map(m => m.routeId))
+        
+        // Only create corridors for multi-route groups
+        if (routes.size > 1) {
+          const corridor: Corridor = {
+            id: `corridor-${corridorIdCounter++}`,
+            microSegments: micros,
+            routes,
+            centerLine: [], // Will be computed
+            averageDirection: { x: 0, y: 0 } // Will be computed
+          }
+
+          // Compute average direction
+          let avgDx = 0, avgDy = 0
+          for (const micro of micros) {
+            avgDx += micro.direction.x
+            avgDy += micro.direction.y
+          }
+          const len = Math.hypot(avgDx, avgDy)
+          corridor.averageDirection = len > 0 ? { x: avgDx / len, y: avgDy / len } : { x: 1, y: 0 }
+
+          corridors.push(corridor)
+
+          // Index micro-segments to corridors
+          for (const micro of micros) {
+            if (!microToCorridors.has(micro.id)) {
+              microToCorridors.set(micro.id, [])
+            }
+            microToCorridors.get(micro.id)!.push(corridor)
+          }
+        }
+      }
+
+      // PHASE 5: Band Assignment within Corridors
+      const routeCorridorBands = new Map<string, Map<string, number>>() // routeId -> corridorId -> bandIndex
+
+      for (const corridor of corridors) {
+        const routeList = Array.from(corridor.routes)
+        
+        // Use the same scoring approach as the original algorithm but applied to corridor geometry
+        if (corridor.microSegments.length === 0) continue
+        
+        // Find a representative line for this corridor
+        const firstMicro = corridor.microSegments[0]
+        const lastMicro = corridor.microSegments[corridor.microSegments.length - 1]
+        
+        const lineStart = firstMicro.centerPos
+        const lineEnd = lastMicro.centerPos
+        
+        // Score each route by average signed distance of all its stations to corridor line
+        const scored: { routeId: string; score: number }[] = []
+        for (const routeId of routeList) {
+          const route = routes.find(r => r.id === routeId)!
+          let s = 0, c = 0
+          for (const stationId of route.stations) {
+            const station = ST.get(stationId)
+            if (!station) continue
+            s += signedDistanceToLine(
+              { position: lineStart },
+              { position: lineEnd },
+              { position: station.position }
+            )
+            c++
+          }
+          scored.push({ routeId, score: (c ? s / c : 0) })
+        }
+
+        // Sort by score -> band order left(-) to right(+)
+        scored.sort((u, v) => u.score - v.score)
+        
+        // Assign band indices
+        if (!routeCorridorBands.has(corridor.id)) {
+          routeCorridorBands.set(corridor.id, new Map())
+        }
+        
+        scored.forEach((item, index) => {
+          routeCorridorBands.get(corridor.id)!.set(item.routeId, index)
+        })
+      }
+
+      // Helper function for signed distance calculation (same as before)
       function signedDistanceToLine(
-        a: { id: string; position: LngLat; color: string; passengerCount: number },
-        b: { id: string; position: LngLat; color: string; passengerCount: number },
-        p: { id: string; position: LngLat; color: string; passengerCount: number }
+        a: { position: LngLat },
+        b: { position: LngLat },
+        p: { position: LngLat }
       ) {
-        // local planarization
         const ax = a.position.lng, ay = a.position.lat
         const bx = b.position.lng, by = b.position.lat
         const px = p.position.lng, py = p.position.lat
@@ -690,187 +958,25 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
         const vx = bx - ax, vy = by - ay
         const wx = px - ax, wy = py - ay
         const L = Math.hypot(vx, vy) || 1
-        // unit perpendicular (rotate +90°): n = (-vy/L, vx/L)
-        const nx = -vy / L, ny =  vx / L
-        // signed distance is projection onto n
+        const nx = -vy / L, ny = vx / L
         return wx * nx + wy * ny
       }
 
-      // Compute local band order per shared undirected segment using ALL stations of each route
-      const bandOrderByUKey = new Map<UKey, { order: string[]; spacing: number }>()
-
-      for (const [uk, rec] of segByUKey) {
-        if (rec.routes.length <= 1) continue // not shared -> no bands needed
-
-        const a = ST.get(rec.a)!, b = ST.get(rec.b)!
-        const isDiagonal = Math.abs(Math.abs(b.position.lng - a.position.lng) - Math.abs(b.position.lat - a.position.lat)) < 1e-6
-        const spacingMeters = isDiagonal ? 50 : 25
-
-        // Score each route by average signed distance of all its stations to line AB
-        const scored: { routeId: string; score: number }[] = []
-        for (const rid of rec.routes) {
-          const r = routes.find(rr => rr.id === rid)!
-          let s = 0, c = 0
-          for (const sid of r.stations) {
-            const p = ST.get(sid)
-            if (!p) continue
-            s += signedDistanceToLine(a, b, p)
-            c++
-          }
-          scored.push({ routeId: rid, score: (c ? s / c : 0) })
-        }
-
-        // Sort by score -> band order left(-) to right(+)
-        scored.sort((u, v) => u.score - v.score)
-        bandOrderByUKey.set(uk, { order: scored.map(s => s.routeId), spacing: spacingMeters })
-      }
-
-      // Build segment adjacency graph (only across shared segments) to propagate consistent orientation
-      // We consider segments adjacent if they share a station and share at least 2 common routes (so band order continuity is meaningful).
-      const adj = new Map<UKey, Set<UKey>>()
-      const segmentsByStation = new Map<string, UKey[]>()
-      for (const uk of segByUKey.keys()) {
-        const rec = segByUKey.get(uk)!
-        if (!segmentsByStation.has(rec.a)) segmentsByStation.set(rec.a, [])
-        if (!segmentsByStation.has(rec.b)) segmentsByStation.set(rec.b, [])
-        segmentsByStation.get(rec.a)!.push(uk)
-        segmentsByStation.get(rec.b)!.push(uk)
-      }
-
-      const routesOn = (uk: UKey) => new Set(segByUKey.get(uk)!.routes)
-
-      for (const [, uks] of segmentsByStation) {
-        for (let i = 0; i < uks.length; i++) {
-          for (let j = i + 1; j < uks.length; j++) {
-            const u1 = uks[i], u2 = uks[j]
-            const s1 = routesOn(u1), s2 = routesOn(u2)
-            // require at least 2 common routes to have a meaningful band continuity
-            let common = 0
-            for (const r of s1) if (s2.has(r)) common++
-            if (common >= 2) {
-              if (!adj.has(u1)) adj.set(u1, new Set())
-              if (!adj.has(u2)) adj.set(u2, new Set())
-              adj.get(u1)!.add(u2)
-              adj.get(u2)!.add(u1)
-            }
-          }
-        }
-      }
-
-      // Propagate orientation: flip band orders on segments so that
-      // transitions across a junction keep the **relative order** of common routes.
-      // We BFS components; first segment is reference, neighbors may flip if it reduces disagreements.
-      const visited = new Set<UKey>()
-      const finalOrderByUKey = new Map<UKey, { order: string[]; spacing: number }>()
-
-      for (const uk of segByUKey.keys()) {
-        if (visited.has(uk)) continue
-        // seed
-        const queue = [uk]
-        visited.add(uk)
-
-        // local orders we can mutate (copy from bandOrderByUKey or singleton)
-        if (segByUKey.get(uk)!.routes.length > 1) {
-          const seed = bandOrderByUKey.get(uk)!
-          finalOrderByUKey.set(uk, { order: [...seed.order], spacing: seed.spacing })
-        } else {
-          finalOrderByUKey.set(uk, { order: [...segByUKey.get(uk)!.routes], spacing: 25 })
-        }
-
-        // BFS
-        while (queue.length) {
-          const cur = queue.shift()!
-          const curFO = finalOrderByUKey.get(cur)!.order
-          const nbrs = adj.get(cur) || new Set()
-
-          for (const nb of nbrs) {
-            if (!visited.has(nb)) {
-              // choose orientation for nb that minimizes disagreements on shared routes with cur
-              const base = bandOrderByUKey.get(nb)
-              if (!base) {
-                finalOrderByUKey.set(nb, { order: [...segByUKey.get(nb)!.routes], spacing: 25 })
-              } else {
-                const o1 = base.order
-                const o2 = [...o1].reverse()
-
-                const common = new Set<string>(o1.filter(x => curFO.includes(x)))
-                const rank = (arr: string[]) => {
-                  const r = new Map<string, number>()
-                  arr.forEach((id, i) => r.set(id, i))
-                  return r
-                }
-                const rCur = rank(curFO)
-                const r1 = rank(o1)
-                const r2 = rank(o2)
-
-                // "disagreement" is number of inverted pairs among common routes
-                const score = (rmap: Map<string, number>) => {
-                  const list = [...common]
-                  let inv = 0
-                  for (let i = 0; i < list.length; i++) {
-                    for (let j = i + 1; j < list.length; j++) {
-                      const a = list[i], b = list[j]
-                      const sCur = (rCur.get(a)! < rCur.get(b)!) // true if a before b in cur
-                      const sNb  = (rmap.get(a)! < rmap.get(b)!)
-                      if (sCur !== sNb) inv++
-                    }
-                  }
-                  return inv
-                }
-
-                const inv1 = score(r1)
-                const inv2 = score(r2)
-                const chosen = inv2 < inv1 ? o2 : o1
-                finalOrderByUKey.set(nb, { order: [...chosen], spacing: base.spacing })
-              }
-
-              visited.add(nb)
-              queue.push(nb)
-            }
-          }
-        }
-      }
-
-      // Per-route rendering metadata
-      // For each ordered segment of a route, we expose:
-      //  - baseIndex (0..k-1) inside the band on its undirected segment
-      //  - bandSize (k)
-      //  - spacing for that segment
-      const perRouteSegInfo = new Map<string, Map<SegmentKey, {
-        bandIndex: number
-        bandSize: number
-        spacing: number
-      }>>()
-
-      for (const r of routes) {
-        const map = new Map<SegmentKey, { bandIndex: number; bandSize: number; spacing: number }>()
-        const segs = routeOrderedSegments.get(r.id) || []
-        for (const ok of segs) {
-          const [a, b] = ok.split('->')
-          const uk = undirectedKey(a, b)
-          const fo = finalOrderByUKey.get(uk)
-          if (!fo || fo.order.length <= 1) continue
-          const idx = fo.order.indexOf(r.id)
-          if (idx >= 0) {
-            map.set(ok, { bandIndex: idx, bandSize: fo.order.length, spacing: fo.spacing })
-          }
-        }
-        perRouteSegInfo.set(r.id, map)
-      }
-
+      // Return the advanced corridor-based topology
       return {
-        segByUKey,
-        routeOrderedSegments,
-        perRouteSegInfo,       // <-- main thing used by renderer
-        finalOrderByUKey       // debug/inspection
+        routeMicroSegments,
+        corridors,
+        microToCorridors,
+        routeCorridorBands,
+        // Legacy compatibility - create simple segment info for routes without corridors
+        perRouteSegInfo: new Map<string, Map<string, { bandIndex: number; bandSize: number; spacing: number }>>()
       }
     }
     
-    // Build topology once
-    const topo = buildRouteNetworkTopology(gameData.routes, gameData.stations)
-    // topo.perRouteSegInfo gives you, for each route + ordered segment, its (bandIndex, bandSize, spacing)
+    // Build advanced corridor-based topology
+    const advancedTopo = buildAdvancedRouteCorridors(gameData.routes, gameData.stations)
 
-    // Add routes with pure offset-based rendering (no per-point reordering)
+    // Advanced Corridor-Aware Route Rendering with Sophisticated Parallel Detection
     gameData.routes.forEach(route => {
       if (route.stations.length < 2) return
 
@@ -879,67 +985,185 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
         .filter((s): s is typeof gameData.stations[0] => !!s)
 
       const points: THREE.Vector3[] = []
+      const routeMicros = advancedTopo.routeMicroSegments.get(route.id) || []
 
-      for (let i = 0; i < routeStations.length - 1; i++) {
-        const a = routeStations[i]!, b = routeStations[i + 1]!
-        const ok = `${a.id}->${b.id}`
-
-        // Build geometry for this leg (snap/metro corners already handled by your createMetroRouteCoordinates)
-        const coords = createMetroRouteCoordinates(a.position, b.position)
-
-        // Get band info for THIS DIRECTION (ordered key)
-        const segInfo = topo.perRouteSegInfo.get(route.id)?.get(ok)
-        const bandIndex = segInfo ? segInfo.bandIndex : 0
-        const bandSize  = segInfo ? segInfo.bandSize  : 1
-        const spacingM  = segInfo ? segInfo.spacing   : 25
-
-        // Check if this route's direction matches the canonical direction used for band ordering
-        const uk = undirectedKey(a.id, b.id)
-        const segRecord = topo.segByUKey.get(uk)
-        const canonicalDirection = segRecord ? `${segRecord.a}->${segRecord.b}` : ok
-        const isReversed = ok !== canonicalDirection
-
-        // center the bands around 0, but flip if route direction is reversed
-        let centeredIdx = bandIndex - (bandSize - 1) / 2
-        if (isReversed) {
-          // Flip the band position for reversed routes to maintain consistent left/right ordering
-          centeredIdx = -centeredIdx
-        }
-
-        // Convert coords -> THREE.Vector3 with perpendicular offset
-        const startIndex = i === 0 ? 0 : 1
-        for (let j = startIndex; j < coords.length; j++) {
-          const [lng, lat] = coords[j]
-          const merc = MercatorCoordinate.fromLngLat([lng, lat], 0)
-
-          // local tangent (for perp)
-          let dx = 0, dy = 0
-          if (j === 0) {
-            const [nx, ny] = coords[j + 1]
-            dx = nx - lng; dy = ny - lat
-          } else if (j === coords.length - 1) {
-            const [px, py] = coords[j - 1]
-            dx = lng - px; dy = lat - py
-          } else {
-            const [px, py] = coords[j - 1]
-            const [nx, ny] = coords[j + 1]
-            dx = (nx - px) * 0.5; dy = (ny - py) * 0.5
+      // Helper function to find the nearest micro-segment to a given position
+      const findNearestMicroSegment = (pos: LngLat): MicroSegment | null => {
+        let nearest: MicroSegment | null = null
+        let minDistance = Infinity
+        
+        for (const micro of routeMicros) {
+          const distance = getDistanceInMeters(pos, micro.centerPos)
+          if (distance < minDistance) {
+            minDistance = distance
+            nearest = micro
           }
+        }
+        
+        return minDistance < 50 ? nearest : null // Within 50m
+      }
 
-          const L = Math.hypot(dx, dy) || 1
-          const nx = -dy / L, ny = dx / L
+      // Helper function to get corridor band info for a position  
+      const getCorridorBandInfo = (pos: LngLat): { bandIndex: number; bandSize: number; spacing: number; direction: { x: number; y: number } } | null => {
+        const nearestMicro = findNearestMicroSegment(pos)
+        if (!nearestMicro) return null
 
-          // band offset in Mercator units
-          const metersToMerc = merc.meterInMercatorCoordinateUnits()
-          const offsetMeters = centeredIdx * spacingM
-          const offX = nx * offsetMeters * metersToMerc
-          const offY = ny * offsetMeters * metersToMerc
+        const corridorsForMicro = advancedTopo.microToCorridors.get(nearestMicro.id) || []
+        if (corridorsForMicro.length === 0) return null
 
-          const z = merc.z - metersToMerc * 5
-          points.push(new THREE.Vector3(merc.x + offX, merc.y + offY, z))
+        // Use the first corridor
+        const corridor = corridorsForMicro[0]
+        const bandIndex = advancedTopo.routeCorridorBands.get(corridor.id)?.get(route.id) ?? 0
+        const bandSize = corridor.routes.size
+        
+        // Determine spacing based on corridor direction
+        const isDiagonal = Math.abs(Math.abs(corridor.averageDirection.x) - Math.abs(corridor.averageDirection.y)) < 0.3
+        const spacing = isDiagonal ? 50 : 25
+
+        return { bandIndex, bandSize, spacing, direction: corridor.averageDirection }
+      }
+
+      // Helper function to determine metro direction type
+      const getMetroDirection = (dx: number, dy: number): 'horizontal' | 'vertical' | 'diagonal' => {
+        const length = Math.hypot(dx, dy)
+        if (length === 0) return 'horizontal'
+        
+        const nx = dx / length
+        const ny = dy / length
+        
+        // Check for horizontal (±1, 0)
+        if (Math.abs(ny) < 0.1) return 'horizontal'
+        // Check for vertical (0, ±1)  
+        if (Math.abs(nx) < 0.1) return 'vertical'
+        // Check for diagonal (±1, ±1) - 45 degrees
+        if (Math.abs(Math.abs(nx) - Math.abs(ny)) < 0.2) return 'diagonal'
+        
+        // Default to closest metro direction
+        if (Math.abs(nx) > Math.abs(ny)) return 'horizontal'
+        return 'vertical'
+      }
+
+      // Helper function to get metro-compliant perpendicular offset direction
+      const getMetroPerpendicularOffset = (segmentDirection: 'horizontal' | 'vertical' | 'diagonal', dx: number, dy: number): { x: number; y: number } => {
+        const length = Math.hypot(dx, dy)
+        if (length === 0) return { x: 0, y: 1 } // Default vertical offset
+        
+        const nx = dx / length
+        const ny = dy / length
+        
+        switch (segmentDirection) {
+          case 'horizontal':
+            // For horizontal segments, offset vertically (pure up/down)
+            return { x: 0, y: 1 } // Always offset upward for consistency
+          case 'vertical':
+            // For vertical segments, offset horizontally (pure left/right)  
+            return { x: 1, y: 0 } // Always offset rightward for consistency
+          case 'diagonal': {
+            // For diagonal segments, calculate precise perpendicular in 45-degree increments
+            // Determine which diagonal this is and provide exact perpendicular
+            
+            // Normalize to exact 45-degree angles
+            const angle = Math.atan2(ny, nx)
+            const quarterPi = Math.PI / 4
+            
+            // Round to nearest 45-degree angle
+            const snapAngle = Math.round(angle / quarterPi) * quarterPi
+            
+            // Calculate perpendicular (add 90 degrees)
+            const perpAngle = snapAngle + Math.PI / 2
+            
+            return {
+              x: Math.cos(perpAngle),
+              y: Math.sin(perpAngle)
+            }
+          }
         }
       }
 
+      // SOPHISTICATED METRO-ANGLE PRESERVING RENDERING SYSTEM
+      
+      // First pass: collect all points and their corridor information
+      const routePoints: Array<{
+        pos: LngLat;
+        mercator: { x: number; y: number; z: number; meterInMercatorCoordinateUnits: () => number };
+        segmentIndex: number;
+        pointIndex: number;
+        corridorInfo: ReturnType<typeof getCorridorBandInfo>;
+        isStation: boolean;
+      }> = []
+
+      for (let i = 0; i < routeStations.length - 1; i++) {
+        const a = routeStations[i]!, b = routeStations[i + 1]!
+        const coords = createMetroRouteCoordinates(a.position, b.position)
+
+        const startIndex = i === 0 ? 0 : 1
+        for (let j = startIndex; j < coords.length; j++) {
+          const [lng, lat] = coords[j]
+          const currentPos = { lng, lat }
+          const merc = MercatorCoordinate.fromLngLat([lng, lat], 0)
+          const corridorInfo = getCorridorBandInfo(currentPos)
+          
+          routePoints.push({
+            pos: currentPos,
+            mercator: merc,
+            segmentIndex: i,
+            pointIndex: j,
+            corridorInfo,
+            isStation: (j === 0 && i === 0) || (j === coords.length - 1 && i === routeStations.length - 2)
+          })
+        }
+      }
+
+      // Second pass: calculate metro-angle preserving offsets
+      for (let i = 0; i < routePoints.length; i++) {
+        const point = routePoints[i]
+        const merc = point.mercator
+
+        // Determine local metro direction and offset
+        let offsetX = 0, offsetY = 0
+
+        if (point.corridorInfo) {
+          const { bandIndex, bandSize, spacing } = point.corridorInfo
+          const centeredIdx = bandIndex - (bandSize - 1) / 2
+          const offsetMeters = centeredIdx * spacing
+
+          // Calculate direction for offset
+          let dx = 0, dy = 0
+          
+          // Get direction from neighboring points
+          if (i === 0 && i < routePoints.length - 1) {
+            // First point - use direction to next point
+            const nextPoint = routePoints[i + 1]
+            dx = nextPoint.pos.lng - point.pos.lng
+            dy = nextPoint.pos.lat - point.pos.lat
+          } else if (i === routePoints.length - 1 && i > 0) {
+            // Last point - use direction from previous point
+            const prevPoint = routePoints[i - 1]
+            dx = point.pos.lng - prevPoint.pos.lng
+            dy = point.pos.lat - prevPoint.pos.lat
+          } else if (i > 0 && i < routePoints.length - 1) {
+            // Middle point - use average direction
+            const prevPoint = routePoints[i - 1]
+            const nextPoint = routePoints[i + 1]
+            dx = (nextPoint.pos.lng - prevPoint.pos.lng) * 0.5
+            dy = (nextPoint.pos.lat - prevPoint.pos.lat) * 0.5
+          }
+
+          // Determine metro direction type and get proper perpendicular offset
+          const metroDir = getMetroDirection(dx, dy)
+          const offsetDir = getMetroPerpendicularOffset(metroDir, dx, dy)
+
+          // Apply metro-compliant offset
+          const metersToMerc = merc.meterInMercatorCoordinateUnits()
+          offsetX = offsetDir.x * offsetMeters * metersToMerc
+          offsetY = offsetDir.y * offsetMeters * metersToMerc
+        }
+
+        const z = merc.z - merc.meterInMercatorCoordinateUnits() * 5
+        points.push(new THREE.Vector3(merc.x + offsetX, merc.y + offsetY, z))
+      }
+
+      // Create the route line
       const geometry = new THREE.BufferGeometry().setFromPoints(points)
       const material = new THREE.LineBasicMaterial({
         color: route.color,

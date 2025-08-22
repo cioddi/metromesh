@@ -119,8 +119,4 @@ export function generateRandomPosition(
   };
 }
 
-// Initial station positions within bounds
-export const INITIAL_STATIONS: LngLat[] = [
-  { lng: -0.1278, lat: 51.5074 }, // Near London Bridge
-  { lng: -0.1000, lat: 51.5155 }, // Near Bank
-];
+// Initial stations are now randomly generated using generateRandomPosition function
