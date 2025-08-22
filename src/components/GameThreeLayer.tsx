@@ -535,53 +535,42 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
       if (isDistressed) {
         const time = Date.now() * 0.001;
         
-        // ✨ TRANSFORM THE STATION WITH ADVANCED MATERIALS ✨
+        // ✨ TRANSFORM THE STATION WITH PASSENGER-COUNT-BASED RED INTENSITY ✨
         const stationMesh = stationObj.object3D.children[1] as THREE.Mesh;
         if (stationMesh && stationMesh.material) {
-          const stationMaterial = stationMesh.material as THREE.MeshPhysicalMaterial;
+          // Calculate intensity based on passenger count (0-20 scale)
+          const passengerCount = station.passengerCount || 0;
+          const distressIntensity = Math.min(passengerCount / 20, 1.0); // Normalize to 0-1
           
-          // Create a molten glass effect with transmission
-          const heatIntensity = 0.8 + 0.3 * Math.sin(time * 5 + Math.sin(time * 3));
-          const colorShift = 0.05 + 0.03 * Math.sin(time * 2);
+          // Pulsing animation gets faster and more intense as passenger count increases
+          const pulseSpeed = 3 + distressIntensity * 7; // From 3 to 10 Hz
+          const pulseIntensity = 0.3 + distressIntensity * 0.5; // From 0.3 to 0.8
+          const heatPulse = pulseIntensity * Math.sin(time * pulseSpeed);
           
-          stationMaterial.color = new THREE.Color().setHSL(colorShift, 1.0, 0.3 + 0.2 * heatIntensity);
-          stationMaterial.emissive = new THREE.Color().setHSL(colorShift + 0.02, 1.0, 0.6 + 0.4 * heatIntensity);
-          stationMaterial.emissiveIntensity = 3.0 + 2.0 * Math.sin(time * 8);
+          // Color shifts from orange (0.08 HSL) to pure red (0.0 HSL) based on passenger count
+          const redHue = 0.08 * (1 - distressIntensity); // Goes from 0.08 (orange) to 0.0 (red)
+          const saturation = 0.8 + 0.2 * distressIntensity; // Gets more saturated
+          const lightness = 0.4 + 0.2 * (1 + heatPulse); // Pulses brightness
           
-          // Advanced material properties for stunning effects
-          stationMaterial.transmission = 0.2 + 0.3 * Math.sin(time * 4); // Glass-like transmission
-          stationMaterial.thickness = 0.5 + 0.3 * Math.sin(time * 3);
-          stationMaterial.roughness = 0.1 + 0.2 * Math.sin(time * 6); // Smooth to rough pulsing
-          stationMaterial.metalness = 0.8 + 0.2 * Math.sin(time * 7); // Metallic shimmer
-          stationMaterial.clearcoat = 1.0; // Full clearcoat for maximum shine
-          stationMaterial.clearcoatRoughness = 0.05 + 0.05 * Math.sin(time * 9);
-          stationMaterial.envMapIntensity = 2.0 + 1.0 * Math.sin(time * 5);
-          stationMaterial.ior = 1.5 + 0.3 * Math.sin(time * 4); // Index of refraction changes
+          const distressMaterial = new THREE.MeshBasicMaterial({
+            color: new THREE.Color().setHSL(redHue, saturation, lightness),
+            transparent: true,
+            opacity: 0.85 + 0.15 * distressIntensity, // Gets more opaque with more passengers
+            side: THREE.DoubleSide
+          });
           
-          // Animated sheen for iridescent effect
-          stationMaterial.sheen = 1.0;
-          stationMaterial.sheenRoughness = 0.1;
-          const sheenColor = new THREE.Color().setHSL((colorShift + 0.1) % 1, 0.8, 0.7);
-          stationMaterial.sheenColor = sheenColor;
+          stationMesh.material = distressMaterial;
         }
 
         // 🌊 ELEGANT ENERGY RINGS - SUBTLE BUT STUNNING 🌊
         const primaryRingGeometry = new THREE.RingGeometry(2.2, 2.6, 64);
         const ringIntensity = 0.7 + 0.3 * Math.sin(time * 6);
-        const primaryRingMaterial = new THREE.MeshPhysicalMaterial({
-          color: new THREE.Color().setHSL(0.02, 1.0, 0.8),
-          emissive: new THREE.Color().setHSL(0.08, 1.0, 0.5 + 0.3 * ringIntensity),
-          emissiveIntensity: 2.0 + 1.0 * ringIntensity,
+        const primaryRingMaterial = new THREE.MeshBasicMaterial({
+          color: new THREE.Color().setHSL(0.05, 0.9, 0.6), // Orange color
           transparent: true,
-          opacity: 0.6 + 0.2 * ringIntensity,
-          transmission: 0.4,
-          thickness: 0.3,
-          roughness: 0.0,
-          metalness: 1.0,
-          clearcoat: 1.0,
-          clearcoatRoughness: 0.0,
-          ior: 2.4,
+          opacity: 0.7 + 0.2 * ringIntensity,
           side: THREE.DoubleSide,
+          blending: THREE.NormalBlending // Changed from additive to normal
         });
         const primaryRing = new THREE.Mesh(primaryRingGeometry, primaryRingMaterial);
         // No rotation needed - ring is already flat like the station
@@ -592,20 +581,12 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
 
         // 💎 CRYSTAL-LIKE OUTER RING WITH REFRACTION 💎
         const outerRingGeometry = new THREE.RingGeometry(3.0, 3.2, 64);
-        const outerRingMaterial = new THREE.MeshPhysicalMaterial({
-          color: new THREE.Color().setHSL(0.15, 0.8, 0.9),
-          emissive: new THREE.Color().setHSL(0.08, 1.0, 0.3),
-          emissiveIntensity: 1.5 + 0.8 * Math.sin(time * 7 + Math.PI),
+        const outerRingMaterial = new THREE.MeshBasicMaterial({
+          color: new THREE.Color().setHSL(0.95, 0.8, 0.6), // Red-pink color
           transparent: true,
-          opacity: 0.4 + 0.2 * Math.sin(time * 5 + Math.PI),
-          transmission: 0.8,
-          thickness: 0.1,
-          roughness: 0.0,
-          metalness: 0.0,
-          clearcoat: 1.0,
-          clearcoatRoughness: 0.0,
-          ior: 1.8,
+          opacity: 0.5 + 0.2 * Math.sin(time * 5 + Math.PI),
           side: THREE.DoubleSide,
+          blending: THREE.NormalBlending
         });
         const outerRing = new THREE.Mesh(outerRingGeometry, outerRingMaterial);
         // No rotation needed - ring is already flat like the station
@@ -617,11 +598,11 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
         // ⭐ SUBTLE AURORA-LIKE GLOW SPHERE ⭐
         const auraGeometry = new THREE.SphereGeometry(1.8, 32, 16);
         const auraMaterial = new THREE.MeshBasicMaterial({
-          color: new THREE.Color().setHSL(0.05 + 0.1 * Math.sin(time * 2), 0.7, 0.5),
+          color: new THREE.Color().setHSL(0.08, 0.8, 0.4), // Orange glow
           transparent: true,
-          opacity: 0.1 + 0.1 * Math.sin(time * 8),
+          opacity: 0.2 + 0.1 * Math.sin(time * 8),
           side: THREE.BackSide, // Render from inside
-          blending: THREE.AdditiveBlending
+          blending: THREE.NormalBlending
         });
         const auraSphere = new THREE.Mesh(auraGeometry, auraMaterial);
         auraSphere.position.z = 0.5;
@@ -631,20 +612,12 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
 
         // 🎆 IRIDESCENT SHIMMER LAYER 🎆
         const shimmerGeometry = new THREE.CylinderGeometry(1.1, 1.1, 0.1, 32);
-        const shimmerMaterial = new THREE.MeshPhysicalMaterial({
-          color: new THREE.Color().setHSL((time * 0.5) % 1, 0.8, 0.7),
-          emissive: new THREE.Color().setHSL((time * 0.3) % 1, 0.9, 0.4),
-          emissiveIntensity: 1.0 + 0.5 * Math.sin(time * 12),
+        const shimmerMaterial = new THREE.MeshBasicMaterial({
+          color: new THREE.Color().setHSL(0.12, 0.9, 0.5 + 0.2 * Math.sin(time * 12)), // Yellow-orange with animation
           transparent: true,
-          opacity: 0.3,
-          roughness: 0.0,
-          metalness: 1.0,
-          clearcoat: 1.0,
-          clearcoatRoughness: 0.0,
-          sheen: 1.0,
-          sheenRoughness: 0.0,
-          sheenColor: new THREE.Color().setHSL((time * 0.7) % 1, 1.0, 0.8),
+          opacity: 0.4 + 0.2 * Math.sin(time * 8),
           side: THREE.DoubleSide,
+          blending: THREE.NormalBlending
         });
         const shimmerLayer = new THREE.Mesh(shimmerGeometry, shimmerMaterial);
         // No rotation needed - cylinder is already oriented correctly for flat appearance

@@ -10,6 +10,7 @@ export default function MapComponent() {
           style: 'https://wms.wheregroup.com/tileserver/style/osm-bright.json',
           center: [MAP_CENTER.lng, MAP_CENTER.lat],
           maxZoom: GAME_CONFIG.maxZoom,
+          maxPitch: 0,
         }}
         mapId="metromesh_map"
       />
