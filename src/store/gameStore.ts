@@ -7,6 +7,7 @@ interface Station {
   position: LngLat
   color: string
   passengerCount: number // Simple count instead of complex array
+  overloadedSince?: number // Timestamp when station first reached 20+ passengers
 }
 
 interface Route {
@@ -34,6 +35,16 @@ interface GameState {
   score: number
   isPlaying: boolean
   gameSpeed: number
+  selectedStationId: string | null
+  isGameOver: boolean
+  gameOverReason: string | null
+  gameOverStats: {
+    finalScore: number
+    totalStations: number
+    totalRoutes: number
+    gameTime: number
+  } | null
+  gameStartTime: number
 }
 
 interface GameActions {
@@ -43,6 +54,8 @@ interface GameActions {
   updateTrainPositions: () => void
   resetGame: () => void
   addPassengerToStation: (stationId: string) => void
+  selectStation: (stationId: string | null) => void
+  triggerGameOver: (reason: string) => void
 }
 
 const STATION_COLORS = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24', '#f0932b', '#eb4d4b', '#6c5ce7', '#a29bfe']
@@ -55,11 +68,16 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   score: 0,
   isPlaying: true,
   gameSpeed: 1,
+  selectedStationId: null,
+  isGameOver: false,
+  gameOverReason: null,
+  gameOverStats: null,
+  gameStartTime: Date.now(),
 
   // Actions
   addStation: (position) => {
     const state = get()
-    const stationPosition = position || generateRandomPosition()
+    const stationPosition = position || generateRandomPosition(state.stations)
     
     const newStation: Station = {
       id: `station-${Date.now()}`,
@@ -180,13 +198,19 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
             const pickupCount = Math.min(station.passengerCount, train.capacity)
             newPassengerCount = pickupCount
             
-            // Update station passenger count
+            // Update station passenger count and clear overloaded status if below 20
             set({
-              stations: state.stations.map(s => 
-                s.id === stationId 
-                  ? { ...s, passengerCount: Math.max(0, s.passengerCount - pickupCount) }
-                  : s
-              )
+              stations: state.stations.map(s => {
+                if (s.id === stationId) {
+                  const newPassengerCount = Math.max(0, s.passengerCount - pickupCount)
+                  return { 
+                    ...s, 
+                    passengerCount: newPassengerCount,
+                    overloadedSince: newPassengerCount < 20 ? undefined : s.overloadedSince
+                  }
+                }
+                return s
+              })
             })
           }
           
@@ -230,17 +254,39 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       trains: updatedTrains,
       score: newScore
     })
+
+    // Check for game over condition: any station with 20+ passengers for 5+ seconds
+    const now = Date.now()
+    const overloadedStation = state.stations.find(station => 
+      station.passengerCount >= 20 && 
+      station.overloadedSince && 
+      (now - station.overloadedSince) >= 5000 // 5 seconds
+    )
+    
+    if (overloadedStation && state.isPlaying) {
+      get().triggerGameOver(`Station ${overloadedStation.id.slice(-4)} was overloaded for too long!`)
+    }
   },
 
   addPassengerToStation: (stationId) => {
     const state = get()
+    const now = Date.now()
     
     set({
-      stations: state.stations.map(station => 
-        station.id === stationId 
-          ? { ...station, passengerCount: station.passengerCount + 1 }
-          : station
-      )
+      stations: state.stations.map(station => {
+        if (station.id === stationId) {
+          const newCount = station.passengerCount + 1
+          const wasOverloaded = station.passengerCount >= 20
+          const isNowOverloaded = newCount >= 20
+          
+          return { 
+            ...station, 
+            passengerCount: newCount,
+            overloadedSince: !wasOverloaded && isNowOverloaded ? now : station.overloadedSince
+          }
+        }
+        return station
+      })
     })
   },
 
@@ -251,7 +297,33 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       trains: [],
       score: 0,
       isPlaying: true,
-      gameSpeed: 1
+      gameSpeed: 1,
+      selectedStationId: null,
+      isGameOver: false,
+      gameOverReason: null,
+      gameOverStats: null,
+      gameStartTime: Date.now()
+    })
+  },
+
+  selectStation: (stationId) => {
+    set({ selectedStationId: stationId })
+  },
+
+  triggerGameOver: (reason) => {
+    const state = get()
+    const gameTime = Math.floor((Date.now() - state.gameStartTime) / 1000) // in seconds
+    
+    set({
+      isPlaying: false,
+      isGameOver: true,
+      gameOverReason: reason,
+      gameOverStats: {
+        finalScore: state.score,
+        totalStations: state.stations.length,
+        totalRoutes: state.routes.length,
+        gameTime: gameTime
+      }
     })
   }
 }))

@@ -385,6 +385,21 @@ body {
   background: #f8f9fa;
 }
 
+.station-item.clickable {
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+
+.station-item.clickable:hover {
+  background: #e9ecef;
+  transform: translateX(2px);
+}
+
+.station-item.clickable:active {
+  transform: translateX(1px);
+  background: #dee2e6;
+}
+
 .station-info {
   display: flex;
   align-items: center;
@@ -474,4 +489,232 @@ body {
 
 .stations-list::-webkit-scrollbar-thumb:hover {
   background: #999;
+}
+
+/* Station Stats Section */
+.station-stats {
+  padding: 16px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  background: #f8f9fa;
+}
+
+.station-stats-hint {
+  font-size: 12px;
+  color: #666;
+  text-align: center;
+  margin: 0;
+  font-style: italic;
+}
+
+.station-stats-error {
+  font-size: 12px;
+  color: #dc3545;
+  text-align: center;
+  margin: 0;
+}
+
+.station-stats-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.station-stats-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  color: #333;
+}
+
+.station-stats-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}
+
+.stat-row .stat-label {
+  color: #666;
+  font-weight: 500;
+}
+
+.stat-row .stat-value {
+  color: #333;
+  font-weight: 600;
+  font-family: monospace;
+}
+
+.connected-routes {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.route-indicator {
+  display: flex;
+  align-items: center;
+}
+
+.route-color-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+/* Game Over Screen */
+.game-over-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  backdrop-filter: blur(4px);
+}
+
+.game-over-screen {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  max-width: 400px;
+  width: 90vw;
+  animation: gameOverSlideIn 0.4s ease-out;
+}
+
+@keyframes gameOverSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.game-over-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 24px;
+  text-align: center;
+}
+
+.game-over-header .logo {
+  height: 48px;
+  margin-bottom: 12px;
+}
+
+.game-over-title {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+}
+
+.game-over-reason {
+  font-size: 14px;
+  opacity: 0.9;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.game-over-stats {
+  padding: 24px;
+}
+
+.game-over-stats .section-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 16px 0;
+  color: #333;
+  text-align: center;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.game-over-stats .stat-item {
+  text-align: center;
+  padding: 16px 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.game-over-stats .stat-value {
+  display: block;
+  font-size: 20px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.game-over-stats .stat-label {
+  font-size: 12px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.game-over-actions {
+  text-align: center;
+}
+
+.restart-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 12px 32px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.restart-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+}
+
+.restart-btn:active {
+  transform: translateY(0);
+}
+
+@media (max-width: 480px) {
+  .game-over-screen {
+    margin: 16px;
+    width: calc(100vw - 32px);
+  }
+  
+  .stats-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  
+  .game-over-header {
+    padding: 20px;
+  }
+  
+  .game-over-stats {
+    padding: 20px;
+  }
 }

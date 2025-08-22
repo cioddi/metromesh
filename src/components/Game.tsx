@@ -3,7 +3,9 @@ import MapComponent from "./MapComponent";
 import GameThreeLayer from "./GameThreeLayer";
 import GameUI from "./GameUI";
 import StationDragHandler from "./StationDragHandler";
+import GameOverScreen from "./GameOverScreen";
 import { useGameStore } from "../store/gameStore";
+import { useMapNavigation } from "../hooks/useMapNavigation";
 import { GAME_CONFIG, INITIAL_STATIONS } from "../config/gameConfig";
 
 export default function Game() {
@@ -13,14 +15,18 @@ export default function Game() {
     trains,
     score,
     isPlaying,
+    selectedStationId,
+    isGameOver,
     addStation,
     addRoute,
     extendRoute,
     updateTrainPositions,
     resetGame,
     addPassengerToStation,
+    selectStation,
   } = useGameStore();
 
+  const { centerAndZoomToStation } = useMapNavigation();
   const initialStationsCreated = useRef(false);
 
   // Add initial stations when game starts
@@ -57,7 +63,7 @@ export default function Game() {
     updateTrainPositions,
     addStation,
     addPassengerToStation,
-    stations.length,
+    stations,
   ]);
 
 
@@ -73,6 +79,18 @@ export default function Game() {
     const colors = ["#ff6b6b", "#4ecdc4", "#45b7d1", "#f9ca24", "#f0932b"];
     const color = colors[routes.length % colors.length];
     addRoute([startStationId, endStationId], color);
+  };
+
+  const handleStationSelectFromList = (stationId: string) => {
+    // Select the station
+    selectStation(stationId);
+    
+    // Find the station to get its position
+    const station = stations.find(s => s.id === stationId);
+    if (station) {
+      // Center and zoom to the station
+      centerAndZoomToStation(station.position, 14);
+    }
   };
 
   // Prepare game data for Three.js layer
@@ -91,7 +109,11 @@ export default function Game() {
   return (
     <>
       <MapComponent />
-      <GameThreeLayer gameData={gameDataForThreeJs} />
+      <GameThreeLayer 
+        gameData={gameDataForThreeJs} 
+        onStationClick={selectStation} 
+        selectedStationId={selectedStationId}
+      />
       <StationDragHandler 
         stations={gameDataForThreeJs.stations}
         routes={routes}
@@ -103,7 +125,10 @@ export default function Game() {
         gameState={{ stations, routes, trains, score, isPlaying, gameSpeed: 1 }}
         onReset={resetGame}
         onCreateRoute={handleCreateRoute}
+        onStationSelectFromList={handleStationSelectFromList}
       />
+      
+      {isGameOver && <GameOverScreen />}
     </>
   );
 }

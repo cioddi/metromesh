@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import type { GameState } from '../types';
+import StationStats from './StationStats';
 
 interface GameUIProps {
   gameState: GameState;
   onReset: () => void;
   onCreateRoute: (stationIds: string[]) => void;
+  onStationSelectFromList?: (stationId: string) => void;
 }
 
 const isMobile = () => typeof window !== 'undefined' && window.innerWidth <= 768;
 
-export default function GameUI({ gameState }: GameUIProps) {
+export default function GameUI({ gameState, onStationSelectFromList }: GameUIProps) {
   const [showStations, setShowStations] = useState(false);
   const [showInstructions, setShowInstructions] = useState(false);
   const mobile = isMobile();
@@ -47,7 +49,11 @@ export default function GameUI({ gameState }: GameUIProps) {
             <h3 className="section-title">Stations</h3>
             <div className="stations-list">
               {gameState.stations.map(station => (
-                <div key={station.id} className="station-item">
+                <div 
+                  key={station.id} 
+                  className="station-item clickable"
+                  onClick={() => onStationSelectFromList?.(station.id)}
+                >
                   <div className="station-info">
                     <div className="station-dot" style={{ backgroundColor: station.color }}></div>
                     <span className="station-name">Stn {station.id.slice(-4)}</span>
@@ -76,6 +82,7 @@ export default function GameUI({ gameState }: GameUIProps) {
             </div>
           </div>
         )}
+        <StationStats />
       </div>
     );
   }
@@ -104,7 +111,11 @@ export default function GameUI({ gameState }: GameUIProps) {
         <h3 className="section-title">Stations</h3>
         <div className="stations-list">
           {gameState.stations.map(station => (
-            <div key={station.id} className="station-item">
+            <div 
+              key={station.id} 
+              className="station-item clickable"
+              onClick={() => onStationSelectFromList?.(station.id)}
+            >
               <div className="station-info">
                 <div className="station-dot" style={{ backgroundColor: station.color }}></div>
                 <span className="station-name">Stn {station.id.slice(-4)}</span>
@@ -130,6 +141,7 @@ export default function GameUI({ gameState }: GameUIProps) {
           <span>Trains pick up waiting passengers</span>
         </div>
       </div>
+      <StationStats />
     </div>
   );
 }
