@@ -401,14 +401,20 @@ body {
 .station-info {
   display: flex;
   align-items: center;
-  gap: 8px;
   flex: 1;
+}
+
+.station-name {
+  font-size: 13px;
+  font-weight: 500;
+  margin-right: 6px;
 }
 
 .route-indicators {
   display: flex;
   gap: 4px;
   align-items: center;
+  margin-right: 8px;
 }
 
 .route-dot {
@@ -418,12 +424,6 @@ body {
   flex-shrink: 0;
   border: 1px solid rgba(255, 255, 255, 0.8);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
-}
-
-.station-name {
-  font-size: 13px;
-  font-weight: 500;
-  flex: 1;
 }
 
 .passenger-badge {
