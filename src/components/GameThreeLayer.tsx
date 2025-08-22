@@ -535,60 +535,155 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
         stationObj.object3D.add(unconnectedRing)
       }
       
-      // Add distress effects for stations with 15+ passengers
-      if (isDistressed && 
-          sharedGeometriesRef.current.distressParticleGeometry && 
-          sharedGeometriesRef.current.distressParticleMaterial) {
-        
-        const time = Date.now() * 0.002
+      // 🌋 DRAMATIC MAGMA STATION MELTDOWN - THE WOW FACTOR! 🌋
+      if (isDistressed) {
+        const time = Date.now() * 0.001; // Time for animations
         const distressSeverity = Math.min((station.passengerCount - 15) / 10, 1) // 0 to 1 based on passenger count
-        const particleCount = Math.ceil(5 + distressSeverity * 10) // 5-15 particles based on severity
         
-        // Create floating distress particles
-        for (let i = 0; i < particleCount; i++) {
-          const particle = new THREE.Mesh(
-            sharedGeometriesRef.current.distressParticleGeometry,
-            sharedGeometriesRef.current.distressParticleMaterial
-          )
+        // 🔥 TRANSFORM THE STATION INTO MOLTEN LAVA! 🔥
+        const stationMesh = stationObj.object3D.children[1] as THREE.Mesh; // Main white station (index 1)
+        if (stationMesh && stationMesh.material) {
+          const stationMaterial = stationMesh.material as THREE.MeshPhysicalMaterial;
           
-          // Animate particles floating around the station
-          const angle = (i / particleCount) * Math.PI * 2 + time + i
-          const radius = 3 + Math.sin(time * 2 + i) * 1 // Varying radius
-          const height = 0.5 + Math.sin(time * 3 + i * 2) * 1.5 // Floating up and down
+          // Dramatic magma transformation with intense pulsation
+          const intensity = 0.7 + 0.5 * Math.sin(time * 4 + Math.sin(time * 2));
+          const hue = 0.05 + 0.03 * Math.sin(time * 3); // Shifting between deep red and orange
           
-          particle.position.set(
-            Math.cos(angle) * radius,
-            Math.sin(angle) * radius,
-            height
-          )
-          
-          // Scale particles based on severity
-          const particleScale = 0.5 + distressSeverity * 1.5
-          particle.scale.setScalar(particleScale)
-          
-          particle.userData = { type: 'distress-particle' }
-          stationObj.object3D.add(particle)
+          stationMaterial.color = new THREE.Color().setHSL(hue, 0.95, 0.25 + 0.15 * intensity);
+          stationMaterial.emissive = new THREE.Color().setHSL(hue + 0.02, 1.0, 0.5 + 0.4 * intensity);
+          stationMaterial.emissiveIntensity = 2.0 + 1.5 * Math.sin(time * 6);
+          stationMaterial.roughness = 0.9; // Very rough molten surface
+          stationMaterial.metalness = 0.1;
         }
-        
-        // Add pulsing red glow effect to the station itself
-        const originalMaterial = stationObj.object3D.children[0] as THREE.Mesh
-        if (originalMaterial && originalMaterial.material) {
-          const glowIntensity = 0.3 + distressSeverity * 0.7 // More intense glow for higher distress
-          const pulseFactor = 0.8 + Math.sin(time * 4) * 0.2 // Fast pulsing
+
+        // 💥 MASSIVE EXPANDING SHOCKWAVE RINGS 💥
+        const primaryRingGeometry = new THREE.RingGeometry(2.5, 5.0, 64);
+        const primaryRingIntensity = 0.8 + 0.4 * Math.sin(time * 8);
+        const primaryRingMaterial = new THREE.MeshBasicMaterial({
+          color: new THREE.Color().setHSL(0.0, 1.0, 0.6 + 0.4 * primaryRingIntensity),
+          transparent: true,
+          opacity: primaryRingIntensity * 0.9,
+          side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending
+        });
+        const primaryRing = new THREE.Mesh(primaryRingGeometry, primaryRingMaterial);
+        primaryRing.rotation.x = Math.PI / 2;
+        primaryRing.position.z = 0.3;
+        primaryRing.scale.setScalar(1 + 0.4 * Math.sin(time * 5));
+        primaryRing.userData = { type: 'distress-glow' };
+        stationObj.object3D.add(primaryRing);
+
+        // 🌪️ SECONDARY PULSING RING - EVEN BIGGER! 🌪️
+        const secondaryRingGeometry = new THREE.RingGeometry(4.0, 5.0, 32);
+        const secondaryRingIntensity = 0.6 + 0.6 * Math.sin(time * 6 + Math.PI);
+        const secondaryRingMaterial = new THREE.MeshBasicMaterial({
+          color: new THREE.Color().setHSL(0.08, 1.0, 0.4 + 0.3 * secondaryRingIntensity),
+          transparent: true,
+          opacity: secondaryRingIntensity * 0.7,
+          side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending
+        });
+        const secondaryRing = new THREE.Mesh(secondaryRingGeometry, secondaryRingMaterial);
+        secondaryRing.rotation.x = Math.PI / 2;
+        secondaryRing.position.z = 0.25;
+        secondaryRing.scale.setScalar(1.5 + 0.5 * Math.sin(time * 4));
+        secondaryRing.userData = { type: 'distress-glow' };
+        stationObj.object3D.add(secondaryRing);
+
+        // 🎆 VOLCANIC ERUPTION SPARKS - MASSIVE CHAOS! 🎆  
+        for (let i = 0; i < 30; i++) {
+          const sparkGeometry = new THREE.SphereGeometry(0.12 + Math.random() * 0.08, 6, 4);
+          const sparkColor = new THREE.Color().setHSL(0.02 + Math.random() * 0.1, 1.0, 0.7 + Math.random() * 0.3);
+          const sparkMaterial = new THREE.MeshBasicMaterial({
+            color: sparkColor,
+            transparent: true,
+            opacity: 0.8 + Math.random() * 0.2,
+            blending: THREE.AdditiveBlending
+          });
+          const spark = new THREE.Mesh(sparkGeometry, sparkMaterial);
           
-          // Create a red emissive overlay
-          const distressGlow = originalMaterial.clone()
-          if (distressGlow.material instanceof THREE.Material) {
-            const glowMaterial = distressGlow.material.clone()
-            if ('emissive' in glowMaterial && 'emissiveIntensity' in glowMaterial) {
-              (glowMaterial as any).emissive = new THREE.Color(0xFF4444) // eslint-disable-line @typescript-eslint/no-explicit-any
-              ;(glowMaterial as any).emissiveIntensity = glowIntensity * pulseFactor // eslint-disable-line @typescript-eslint/no-explicit-any
-            }
-            distressGlow.material = glowMaterial
-            distressGlow.scale.setScalar(1.1) // Slightly larger for glow effect
-            distressGlow.userData = { type: 'distress-glow' }
-            stationObj.object3D.add(distressGlow)
-          }
+          // Chaotic multi-layered motion for maximum drama
+          const baseAngle = (i / 30) * Math.PI * 2;
+          const spiralAngle = time * (3 + Math.sin(i * 0.7)) + baseAngle;
+          const chaosAngle = time * (2 + Math.cos(i * 0.3)) + i;
+          const radius = 3.5 + 2.0 * Math.sin(time * 2 + i * 0.4);
+          
+          spark.position.x = Math.cos(spiralAngle) * radius + 0.8 * Math.cos(chaosAngle);
+          spark.position.y = Math.sin(spiralAngle) * radius + 0.8 * Math.sin(chaosAngle);
+          spark.position.z = 0.8 + 3.5 * Math.abs(Math.sin(time * 3 + i * 0.2));
+          
+          // Dynamic scaling for more chaos
+          const sparkScale = 0.6 + 2.0 * Math.abs(Math.sin(time * 4 + i));
+          spark.scale.setScalar(Math.max(0.2, sparkScale));
+          
+          spark.userData = { type: 'distress-particle' };
+          stationObj.object3D.add(spark);
+        }
+
+        // 🏔️ LAVA FOUNTAIN GEYSERS 🏔️
+        for (let i = 0; i < 8; i++) {
+          const fountainGeometry = new THREE.ConeGeometry(0.15, 1.2, 8);
+          const fountainMaterial = new THREE.MeshBasicMaterial({
+            color: new THREE.Color().setHSL(0.06, 1.0, 0.8),
+            transparent: true,
+            opacity: 0.9,
+            blending: THREE.AdditiveBlending
+          });
+          const fountain = new THREE.Mesh(fountainGeometry, fountainMaterial);
+          
+          const angle = (i / 8) * Math.PI * 2;
+          const radius = 2.0 + 0.5 * Math.sin(time * 2 + i);
+          fountain.position.x = Math.cos(angle) * radius;
+          fountain.position.y = Math.sin(angle) * radius;
+          fountain.position.z = 0.6 + 2.5 * Math.abs(Math.sin(time * 5 + i * 0.9));
+          
+          fountain.rotation.x = Math.PI;
+          fountain.scale.y = 0.7 + 2.0 * Math.sin(time * 6 + i * 1.2);
+          fountain.scale.x = fountain.scale.z = 1 + 0.5 * Math.sin(time * 4 + i);
+          
+          fountain.userData = { type: 'distress-particle' };
+          stationObj.object3D.add(fountain);
+        }
+
+        // 💨 HEAT DISTORTION WAVES 💨
+        for (let layer = 0; layer < 3; layer++) {
+          const waveGeometry = new THREE.RingGeometry(2.0 + layer * 1.5, 7.0 + layer * 1.0, 32);
+          const waveMaterial = new THREE.MeshBasicMaterial({
+            color: new THREE.Color().setHSL(0.08 + layer * 0.02, 0.8, 0.3),
+            transparent: true,
+            opacity: (0.15 - layer * 0.04) + 0.08 * Math.sin(time * (10 - layer * 2)),
+            side: THREE.DoubleSide,
+            blending: THREE.AdditiveBlending
+          });
+          const wave = new THREE.Mesh(waveGeometry, waveMaterial);
+          wave.rotation.x = Math.PI / 2;
+          wave.position.z = 0.1 + layer * 0.05;
+          wave.scale.setScalar(1 + 0.2 * Math.sin(time * (8 - layer * 2) + layer));
+          wave.userData = { type: 'distress-glow' };
+          stationObj.object3D.add(wave);
+        }
+
+        // ⚡ ELECTRIC PLASMA ARCS ⚡
+        for (let i = 0; i < 6; i++) {
+          const arcGeometry = new THREE.CylinderGeometry(0.05, 0.02, 2.0, 6);
+          const arcMaterial = new THREE.MeshBasicMaterial({
+            color: new THREE.Color().setHSL(0.15, 1.0, 0.9),
+            transparent: true,
+            opacity: 0.8 + 0.2 * Math.sin(time * 15 + i * 2),
+            blending: THREE.AdditiveBlending
+          });
+          const arc = new THREE.Mesh(arcGeometry, arcMaterial);
+          
+          const angle = (i / 6) * Math.PI * 2;
+          arc.position.x = Math.cos(angle) * 2.2;
+          arc.position.y = Math.sin(angle) * 2.2;
+          arc.position.z = 1.0 + Math.sin(time * 8 + i) * 0.8;
+          
+          arc.rotation.z = angle + Math.PI / 2;
+          arc.rotation.x = Math.sin(time * 6 + i) * 0.5;
+          
+          arc.userData = { type: 'distress-particle' };
+          stationObj.object3D.add(arc);
         }
       }
       
