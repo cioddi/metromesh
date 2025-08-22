@@ -146,6 +146,10 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
     trainPassengerMaterial?: THREE.MeshStandardMaterial
     selectionRingGeometry?: THREE.RingGeometry
     selectionRingMaterial?: THREE.MeshBasicMaterial
+    unconnectedRingGeometry?: THREE.RingGeometry
+    unconnectedRingMaterial?: THREE.MeshBasicMaterial
+    distressParticleGeometry?: THREE.SphereGeometry
+    distressParticleMaterial?: THREE.MeshBasicMaterial
   }>({})
   
   // Instanced meshes for passengers
@@ -279,6 +283,27 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
           opacity: 0.9, // 90% opaque
           side: THREE.DoubleSide
         })
+        
+        // Initialize unconnected station indicator
+        sharedGeometriesRef.current.unconnectedRingGeometry = new THREE.RingGeometry(
+          2.5, // Inner radius (larger than selection ring)
+          3.0, // Outer radius  
+          16   // Segments
+        )
+        sharedGeometriesRef.current.unconnectedRingMaterial = new THREE.MeshBasicMaterial({
+          color: 0x6975dd, // Purple color
+          transparent: true,
+          opacity: 0.8,
+          side: THREE.DoubleSide
+        })
+        
+        // Initialize distress particle effects
+        sharedGeometriesRef.current.distressParticleGeometry = new THREE.SphereGeometry(0.1, 6, 4)
+        sharedGeometriesRef.current.distressParticleMaterial = new THREE.MeshBasicMaterial({
+          color: 0xFF6666, // Light red for particles
+          transparent: true,
+          opacity: 0.7
+        })
       },
       
       render: function(_gl: WebGLRenderingContext | WebGL2RenderingContext, matrix: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -330,18 +355,21 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
       raycasterRef.current.setFromCamera(mouseRef.current, camera)
       const intersects = raycasterRef.current.intersectObjects(layerRef.current.scene.children, true)
 
+      // Sort intersections by distance to get the closest one first
+      intersects.sort((a, b) => a.distance - b.distance)
+      
       // Find the first station intersection
       for (const intersect of intersects) {
-        let object = intersect.object
+        const object = intersect.object
         
-        // Traverse up to find the station object
-        while (object && object.userData?.type !== 'station') {
-          object = object.parent as THREE.Object3D
-        }
-        
-        if (object && object.userData?.type === 'station' && object.userData?.stationId) {
-          onStationClick(object.userData.stationId)
-          return // Exit early to prevent further processing
+        // Check if this object or any of its parents is a station
+        let current = object
+        while (current) {
+          if (current.userData?.type === 'station' && current.userData?.stationId) {
+            onStationClick(current.userData.stationId)
+            return // Exit early to prevent further processing
+          }
+          current = current.parent as THREE.Object3D
         }
       }
     }
@@ -365,32 +393,41 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
     
     // Clear existing game objects with proper disposal
     const gameObjects = scene.children.filter((child: THREE.Object3D) => 
-      child.userData && ['station', 'route', 'train', 'passenger', 'passengers', 'selection-ring'].includes(child.userData.type)
+      child.userData && ['station', 'route', 'train', 'passenger', 'passengers', 'selection-ring', 'unconnected-ring', 'distress-particle', 'distress-glow'].includes(child.userData.type)
     )
     gameObjects.forEach((obj: THREE.Object3D) => {
       scene.remove(obj)
       // Dispose of geometries and materials for objects that don't use shared resources
-      if (obj instanceof THREE.Mesh && 
-          obj.userData.type !== 'passenger' && 
-          obj.userData.type !== 'passengers' && 
-          obj.userData.type !== 'selection-ring') {
+      const sharedTypes = ['passenger', 'passengers', 'selection-ring', 'unconnected-ring', 'distress-particle', 'distress-glow']
+      if (obj instanceof THREE.Mesh && !sharedTypes.includes(obj.userData.type)) {
         // Only dispose if not using shared geometry/material
-        if (obj.geometry !== sharedGeometriesRef.current.passengerGeometry && 
-            obj.geometry !== sharedGeometriesRef.current.trainPassengerGeometry &&
-            obj.geometry !== sharedGeometriesRef.current.selectionRingGeometry) {
+        const sharedGeometries = [
+          sharedGeometriesRef.current.passengerGeometry,
+          sharedGeometriesRef.current.trainPassengerGeometry,
+          sharedGeometriesRef.current.selectionRingGeometry,
+          sharedGeometriesRef.current.unconnectedRingGeometry,
+          sharedGeometriesRef.current.distressParticleGeometry
+        ]
+        
+        if (!sharedGeometries.includes(obj.geometry as any)) { // eslint-disable-line @typescript-eslint/no-explicit-any
           obj.geometry.dispose()
         }
+        
+        const sharedMaterials = [
+          sharedGeometriesRef.current.passengerMaterial,
+          sharedGeometriesRef.current.trainPassengerMaterial,
+          sharedGeometriesRef.current.selectionRingMaterial,
+          sharedGeometriesRef.current.unconnectedRingMaterial,
+          sharedGeometriesRef.current.distressParticleMaterial
+        ]
+        
         if (Array.isArray(obj.material)) {
           obj.material.forEach(mat => {
-            if (mat !== sharedGeometriesRef.current.passengerMaterial && 
-                mat !== sharedGeometriesRef.current.trainPassengerMaterial &&
-                mat !== sharedGeometriesRef.current.selectionRingMaterial) {
+            if (!sharedMaterials.includes(mat as any)) { // eslint-disable-line @typescript-eslint/no-explicit-any
               mat.dispose()
             }
           })
-        } else if (obj.material !== sharedGeometriesRef.current.passengerMaterial && 
-                   obj.material !== sharedGeometriesRef.current.trainPassengerMaterial &&
-                   obj.material !== sharedGeometriesRef.current.selectionRingMaterial) {
+        } else if (!sharedMaterials.includes(obj.material as any)) { // eslint-disable-line @typescript-eslint/no-explicit-any
           obj.material.dispose()
         }
       }
@@ -403,6 +440,8 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
       
       // Find routes connected to this station
       const connectedRoutes = gameData.routes.filter(route => route.stations.includes(station.id))
+      const isUnconnected = connectedRoutes.length === 0
+      const isDistressed = station.passengerCount >= 15
       
       // Add colored outlines for connected routes
       if (connectedRoutes.length > 0) {
@@ -454,6 +493,82 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
         selectionRing.position.z = 0.05 // Slightly above the station
         selectionRing.userData = { type: 'selection-ring' }
         stationObj.object3D.add(selectionRing)
+      }
+      
+      // Add unconnected station indicator
+      if (isUnconnected && 
+          sharedGeometriesRef.current.unconnectedRingGeometry && 
+          sharedGeometriesRef.current.unconnectedRingMaterial) {
+        const unconnectedRing = new THREE.Mesh(
+          sharedGeometriesRef.current.unconnectedRingGeometry,
+          sharedGeometriesRef.current.unconnectedRingMaterial
+        )
+        unconnectedRing.position.z = 0.02 // Below selection ring but above station
+        unconnectedRing.userData = { type: 'unconnected-ring' }
+        
+        // Add pulsing animation for better visibility
+        const time = Date.now() * 0.003
+        const pulse = 0.8 + Math.sin(time) * 0.2 // Pulse between 0.6 and 1.0
+        unconnectedRing.scale.setScalar(pulse)
+        
+        stationObj.object3D.add(unconnectedRing)
+      }
+      
+      // Add distress effects for stations with 15+ passengers
+      if (isDistressed && 
+          sharedGeometriesRef.current.distressParticleGeometry && 
+          sharedGeometriesRef.current.distressParticleMaterial) {
+        
+        const time = Date.now() * 0.002
+        const distressSeverity = Math.min((station.passengerCount - 15) / 10, 1) // 0 to 1 based on passenger count
+        const particleCount = Math.ceil(5 + distressSeverity * 10) // 5-15 particles based on severity
+        
+        // Create floating distress particles
+        for (let i = 0; i < particleCount; i++) {
+          const particle = new THREE.Mesh(
+            sharedGeometriesRef.current.distressParticleGeometry,
+            sharedGeometriesRef.current.distressParticleMaterial
+          )
+          
+          // Animate particles floating around the station
+          const angle = (i / particleCount) * Math.PI * 2 + time + i
+          const radius = 3 + Math.sin(time * 2 + i) * 1 // Varying radius
+          const height = 0.5 + Math.sin(time * 3 + i * 2) * 1.5 // Floating up and down
+          
+          particle.position.set(
+            Math.cos(angle) * radius,
+            Math.sin(angle) * radius,
+            height
+          )
+          
+          // Scale particles based on severity
+          const particleScale = 0.5 + distressSeverity * 1.5
+          particle.scale.setScalar(particleScale)
+          
+          particle.userData = { type: 'distress-particle' }
+          stationObj.object3D.add(particle)
+        }
+        
+        // Add pulsing red glow effect to the station itself
+        const originalMaterial = stationObj.object3D.children[0] as THREE.Mesh
+        if (originalMaterial && originalMaterial.material) {
+          const glowIntensity = 0.3 + distressSeverity * 0.7 // More intense glow for higher distress
+          const pulseFactor = 0.8 + Math.sin(time * 4) * 0.2 // Fast pulsing
+          
+          // Create a red emissive overlay
+          const distressGlow = originalMaterial.clone()
+          if (distressGlow.material instanceof THREE.Material) {
+            const glowMaterial = distressGlow.material.clone()
+            if ('emissive' in glowMaterial && 'emissiveIntensity' in glowMaterial) {
+              (glowMaterial as any).emissive = new THREE.Color(0xFF4444) // eslint-disable-line @typescript-eslint/no-explicit-any
+              ;(glowMaterial as any).emissiveIntensity = glowIntensity * pulseFactor // eslint-disable-line @typescript-eslint/no-explicit-any
+            }
+            distressGlow.material = glowMaterial
+            distressGlow.scale.setScalar(1.1) // Slightly larger for glow effect
+            distressGlow.userData = { type: 'distress-glow' }
+            stationObj.object3D.add(distressGlow)
+          }
+        }
       }
       
       scene.add(stationObj.object3D)

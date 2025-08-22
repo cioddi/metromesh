@@ -26,7 +26,7 @@ export const GAME_CONFIG = {
   stationSpawnProbability: 0.0015, // Per game loop cycle (100ms) - half the rate
   passengerSpawnProbability: 0.045, // Increased by 1.5x from 0.03
   maxStations: 8,
-  initialZoom: 12,
+  initialZoom: 13,
   gameLoopInterval: 100, // milliseconds
 } as const;
 
