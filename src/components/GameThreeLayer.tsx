@@ -327,6 +327,40 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
     console.log('Three.js layer added to map')
   }, [mapContext?.map])
 
+  // Handle resize events to prevent Three.js distortion
+  useEffect(() => {
+    if (!mapContext?.map) return
+
+    const map = mapContext.map
+    const canvas = map.getCanvas()
+
+    const handleResize = () => {
+      if (layerRef.current?.renderer) {
+        const renderer = layerRef.current.renderer
+        // Get the current canvas size
+        const width = canvas.clientWidth
+        const height = canvas.clientHeight
+        
+        // Update the Three.js renderer size
+        renderer.setSize(width, height, false) // false prevents setting CSS size
+        
+        // Force a repaint
+        map.triggerRepaint()
+      }
+    }
+
+    // Listen to map resize events
+    map.on('resize', handleResize)
+
+    // Also listen to window resize for additional safety
+    window.addEventListener('resize', handleResize)
+
+    return () => {
+      map.off('resize', handleResize)
+      window.removeEventListener('resize', handleResize)
+    }
+  }, [mapContext?.map])
+
   // Add click handling
   useEffect(() => {
     if (!mapContext?.map || !onStationClick) return
@@ -334,43 +368,23 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
     const map = mapContext.map
 
     const handleMapClick = (e: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
-      if (!layerRef.current?.scene || !layerRef.current?.camera || !raycasterRef.current || !mouseRef.current) return
-
       // Get click coordinates relative to canvas
       const rect = map.getCanvas().getBoundingClientRect()
       const x = e.originalEvent.clientX - rect.left
       const y = e.originalEvent.clientY - rect.top
-
-      // Normalize to [-1, 1] range
-      mouseRef.current.x = (x / rect.width) * 2 - 1
-      mouseRef.current.y = -(y / rect.height) * 2 + 1
-
-      // Update camera matrix for raycasting
-      const camera = layerRef.current.camera
-      if (camera.projectionMatrix) {
-        camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert()
-      }
       
-      // Perform raycasting
-      raycasterRef.current.setFromCamera(mouseRef.current, camera)
-      const intersects = raycasterRef.current.intersectObjects(layerRef.current.scene.children, true)
-
-      // Sort intersections by distance to get the closest one first
-      intersects.sort((a, b) => a.distance - b.distance)
+      // Convert screen coordinates to map coordinates (same as StationDragHandler)
+      const point = map.unproject([x, y])
+      const pointLngLat = { lng: point.lng, lat: point.lat }
       
-      // Find the first station intersection
-      for (const intersect of intersects) {
-        const object = intersect.object
-        
-        // Check if this object or any of its parents is a station
-        let current = object
-        while (current) {
-          if (current.userData?.type === 'station' && current.userData?.stationId) {
-            onStationClick(current.userData.stationId)
-            return // Exit early to prevent further processing
-          }
-          current = current.parent as THREE.Object3D
-        }
+      // Find closest station within reasonable distance (same as StationDragHandler)
+      const closestStation = findClosestStation(pointLngLat, gameData.stations, 150) // 150m radius
+      
+      if (closestStation) {
+        console.log('✅ Station selected:', closestStation.id)
+        onStationClick(closestStation.id)
+      } else {
+        console.log('❌ No station found within 150m')
       }
     }
 
@@ -379,7 +393,7 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
     return () => {
       map.off('click', handleMapClick)
     }
-  }, [mapContext?.map, onStationClick])
+  }, [mapContext?.map, onStationClick, gameData.stations])
 
   // Update game objects in the Three.js scene
   useEffect(() => {
@@ -481,6 +495,13 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
       const scale = mercator.meterInMercatorCoordinateUnits() * (stationObj.scale || 1)
       stationObj.object3D.scale.setScalar(scale)
       stationObj.object3D.userData = { type: 'station', stationId: station.id }
+      
+      // Ensure all children also have the station userData for raycasting
+      stationObj.object3D.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.userData = { type: 'station', stationId: station.id }
+        }
+      })
       
       // Add selection ring if this station is selected
       if (selectedStationId === station.id && 
@@ -765,6 +786,37 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
   }, [gameData, selectedStationId])
   
   return null
+}
+
+// Helper function to find closest station to a point (same as StationDragHandler)
+function findClosestStation(
+  point: LngLat, 
+  stations: Array<{ id: string; position: LngLat; color: string }>, 
+  maxDistanceMeters: number
+): { id: string; position: LngLat; color: string } | null {
+  let closestStation = null;
+  let minDistance = Infinity;
+
+  for (const station of stations) {
+    const distance = getDistanceInMeters(point, station.position);
+    if (distance < minDistance && distance <= maxDistanceMeters) {
+      minDistance = distance;
+      closestStation = station;
+    }
+  }
+  return closestStation;
+}
+
+// Simple distance calculation (same as StationDragHandler)
+function getDistanceInMeters(pos1: LngLat, pos2: LngLat): number {
+  const dlng = pos2.lng - pos1.lng;
+  const dlat = pos2.lat - pos1.lat;
+  
+  // Rough conversion to meters (assuming roughly 111km per degree)
+  const dxMeters = dlng * 111000 * Math.cos(pos1.lat * Math.PI / 180);
+  const dyMeters = dlat * 111000;
+  
+  return Math.sqrt(dxMeters * dxMeters + dyMeters * dyMeters);
 }
 
 export default GameThreeLayer
