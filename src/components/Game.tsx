@@ -4,7 +4,7 @@ import GameThreeLayer from "./GameThreeLayer";
 import GameUI from "./GameUI";
 import StationDragHandler from "./StationDragHandler";
 import GameOverScreen from "./GameOverScreen";
-import { useGameStore } from "../store/gameStore";
+import { useGameStore, ROUTE_COLORS } from "../store/gameStore";
 import { useMapNavigation } from "../hooks/useMapNavigation";
 import { GAME_CONFIG, INITIAL_STATIONS } from "../config/gameConfig";
 
@@ -69,15 +69,13 @@ export default function Game() {
 
   const handleCreateRoute = (stationIds: string[]) => {
     if (stationIds.length >= 2) {
-      const colors = ["#ff6b6b", "#4ecdc4", "#45b7d1", "#f9ca24", "#f0932b"];
-      const color = colors[routes.length % colors.length];
+      const color = ROUTE_COLORS[routes.length % ROUTE_COLORS.length];
       addRoute(stationIds, color);
     }
   };
 
   const handleDragCreateRoute = (startStationId: string, endStationId: string) => {
-    const colors = ["#ff6b6b", "#4ecdc4", "#45b7d1", "#f9ca24", "#f0932b"];
-    const color = colors[routes.length % colors.length];
+    const color = ROUTE_COLORS[routes.length % ROUTE_COLORS.length];
     addRoute([startStationId, endStationId], color);
   };
 

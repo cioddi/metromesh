@@ -60,6 +60,9 @@ interface GameActions {
 
 const STATION_COLORS = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24', '#f0932b', '#eb4d4b', '#6c5ce7', '#a29bfe']
 
+// More distinguishable route colors with better contrast
+export const ROUTE_COLORS = ['#e74c3c', '#2ecc71', '#3498db', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#34495e']
+
 export const useGameStore = create<GameState & GameActions>((set, get) => ({
   // Initial state
   stations: [],

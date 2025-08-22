@@ -16,6 +16,11 @@ export default function GameUI({ gameState, onStationSelectFromList }: GameUIPro
   const [showInstructions, setShowInstructions] = useState(false);
   const mobile = isMobile();
 
+  // Helper function to get routes connected to a station
+  const getConnectedRoutes = (stationId: string) => {
+    return gameState.routes.filter(route => route.stations.includes(stationId));
+  };
+
   if (mobile) {
     return (
       <div className="game-ui-mobile">
@@ -55,8 +60,16 @@ export default function GameUI({ gameState, onStationSelectFromList }: GameUIPro
                   onClick={() => onStationSelectFromList?.(station.id)}
                 >
                   <div className="station-info">
-                    <div className="station-dot" style={{ backgroundColor: station.color }}></div>
                     <span className="station-name">Stn {station.id.slice(-4)}</span>
+                    <div className="route-indicators">
+                      {getConnectedRoutes(station.id).map(route => (
+                        <div 
+                          key={route.id}
+                          className="route-dot" 
+                          style={{ backgroundColor: route.color }}
+                        ></div>
+                      ))}
+                    </div>
                     {(station.passengerCount || 0) > 0 && (
                       <div className="passenger-badge">{station.passengerCount}</div>
                     )}
@@ -117,8 +130,16 @@ export default function GameUI({ gameState, onStationSelectFromList }: GameUIPro
               onClick={() => onStationSelectFromList?.(station.id)}
             >
               <div className="station-info">
-                <div className="station-dot" style={{ backgroundColor: station.color }}></div>
                 <span className="station-name">Stn {station.id.slice(-4)}</span>
+                <div className="route-indicators">
+                  {getConnectedRoutes(station.id).map(route => (
+                    <div 
+                      key={route.id}
+                      className="route-dot" 
+                      style={{ backgroundColor: route.color }}
+                    ></div>
+                  ))}
+                </div>
                 {(station.passengerCount || 0) > 0 && (
                   <div className="passenger-badge">{station.passengerCount}</div>
                 )}
