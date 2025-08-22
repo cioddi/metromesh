@@ -630,33 +630,150 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
       scene.add(stationObj.object3D)
     })
     
-    // Helper function to find overlapping route segments
-    const findOverlappingSegments = (routes: typeof gameData.routes) => {
-      const segments = new Map<string, string[]>() // segmentKey -> [routeId1, routeId2, ...]
+    // Advanced Route Network Topology Analysis and Global Crossing Minimization
+    const buildRouteNetworkTopology = (routes: typeof gameData.routes) => {
+      // Step 1: Build network graph and identify all route overlaps
+      const routeGraph = new Map<string, Set<string>>() // routeId -> connected routeIds
+      const sharedSegments = new Map<string, string[]>() // segmentKey -> routeIds
+      const routeSegments = new Map<string, string[]>() // routeId -> segmentKeys
       
+      // Build route segment mappings
       routes.forEach(route => {
         if (route.stations.length < 2) return
         
+        const segments = []
         for (let i = 0; i < route.stations.length - 1; i++) {
-          const stationA = route.stations[i]
-          const stationB = route.stations[i + 1]
+          const segmentKey = [route.stations[i], route.stations[i + 1]].sort().join('->')
+          segments.push(segmentKey)
           
-          // Create segment key (ensure consistent ordering)
-          const segmentKey = [stationA, stationB].sort().join('->')
-          
-          if (!segments.has(segmentKey)) {
-            segments.set(segmentKey, [])
+          if (!sharedSegments.has(segmentKey)) {
+            sharedSegments.set(segmentKey, [])
           }
-          segments.get(segmentKey)!.push(route.id)
+          sharedSegments.get(segmentKey)!.push(route.id)
+        }
+        routeSegments.set(route.id, segments)
+      })
+      
+      // Build route connectivity graph
+      routes.forEach(routeA => {
+        if (!routeGraph.has(routeA.id)) {
+          routeGraph.set(routeA.id, new Set())
+        }
+        
+        const segmentsA = routeSegments.get(routeA.id) || []
+        segmentsA.forEach(segment => {
+          const overlappingRoutes = sharedSegments.get(segment) || []
+          overlappingRoutes.forEach(routeB => {
+            if (routeA.id !== routeB) {
+              routeGraph.get(routeA.id)!.add(routeB)
+            }
+          })
+        })
+      })
+      
+      // Step 2: Find connected components (route groups that share any segments)
+      const visited = new Set<string>()
+      const routeGroups: string[][] = []
+      
+      const dfs = (routeId: string, currentGroup: string[]) => {
+        if (visited.has(routeId)) return
+        visited.add(routeId)
+        currentGroup.push(routeId)
+        
+        const connections = routeGraph.get(routeId) || new Set()
+        connections.forEach(connectedRoute => {
+          dfs(connectedRoute, currentGroup)
+        })
+      }
+      
+      routes.forEach(route => {
+        if (!visited.has(route.id)) {
+          const group: string[] = []
+          dfs(route.id, group)
+          if (group.length > 1) {
+            routeGroups.push(group)
+          }
         }
       })
       
-      return segments
+      // Step 3: Global ordering optimization for each route group
+      const globalRouteOrdering = new Map<string, number>()
+      
+      routeGroups.forEach(group => {
+        // Advanced crossing minimization using route endpoint analysis
+        const routeEndpoints = group.map(routeId => {
+          const route = routes.find(r => r.id === routeId)!
+          const firstStation = gameData.stations.find(s => s.id === route.stations[0])!
+          const lastStation = gameData.stations.find(s => s.id === route.stations[route.stations.length - 1])!
+          
+          // Calculate route "direction vector" from start to end
+          const dirX = lastStation.position.lng - firstStation.position.lng
+          const dirY = lastStation.position.lat - firstStation.position.lat
+          const angle = Math.atan2(dirY, dirX)
+          
+          // Calculate route "center point"  
+          const centerLng = (firstStation.position.lng + lastStation.position.lng) / 2
+          const centerLat = (firstStation.position.lat + lastStation.position.lat) / 2
+          
+          return {
+            routeId,
+            angle,
+            centerLng,
+            centerLat,
+            length: route.stations.length
+          }
+        })
+        
+        // Multi-criteria sorting for optimal ordering
+        const orderedRoutes = routeEndpoints.sort((a, b) => {
+          // Primary: angle (direction-based ordering)
+          const angleDiff = a.angle - b.angle
+          if (Math.abs(angleDiff) > 0.1) return angleDiff
+          
+          // Secondary: center longitude (left-to-right consistency) 
+          const lngDiff = a.centerLng - b.centerLng
+          if (Math.abs(lngDiff) > 0.001) return lngDiff
+          
+          // Tertiary: route length (shorter routes on outside)
+          return a.length - b.length
+        })
+        
+        // Assign global ordering
+        orderedRoutes.forEach((route, index) => {
+          globalRouteOrdering.set(route.routeId, index)
+        })
+      })
+      
+      // Step 4: Build final rendering information
+      const routeRenderInfo = new Map<string, {
+        globalOrder: number
+        groupSize: number
+        sharedSegments: string[]
+      }>()
+      
+      routes.forEach(route => {
+        const segments = routeSegments.get(route.id) || []
+        const overlappingSegments = segments.filter(segment => 
+          (sharedSegments.get(segment) || []).length > 1
+        )
+        
+        const globalOrder = globalRouteOrdering.get(route.id) || 0
+        const group = routeGroups.find(g => g.includes(route.id))
+        const groupSize = group ? group.length : 1
+        
+        routeRenderInfo.set(route.id, {
+          globalOrder,
+          groupSize,
+          sharedSegments: overlappingSegments
+        })
+      })
+      
+      return { routeRenderInfo, sharedSegments }
     }
     
-    const overlappingSegments = findOverlappingSegments(gameData.routes)
+    const { routeRenderInfo, sharedSegments } = buildRouteNetworkTopology(gameData.routes)
 
-    // Add routes as lines with parallel rendering for overlaps
+    // Add routes as lines with advanced parallel rendering and consistent ordering
     gameData.routes.forEach(route => {
       if (route.stations.length < 2) return
       
@@ -666,6 +783,10 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
       
       if (routeStations.length < 2) return
       
+      // Get global rendering information for this route
+      const renderInfo = routeRenderInfo.get(route.id)
+      if (!renderInfo) return
+      
       // Create metro-style line geometry with corner points
       const points: THREE.Vector3[] = []
       
@@ -673,22 +794,157 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
         const currentStation = routeStations[i]!
         const nextStation = routeStations[i + 1]!
         
-        // Check if this segment overlaps with other routes
-        const segmentKey = [currentStation.id, nextStation.id].sort().join('->')
-        const overlappingRoutes = overlappingSegments.get(segmentKey) || []
-        const routeIndex = overlappingRoutes.indexOf(route.id)
-        const totalOverlapping = overlappingRoutes.length
-        
-        // Calculate offset for parallel lines
-        let offset = 0
-        if (totalOverlapping > 1) {
-          // Spread routes across parallel positions
-          const spacing = 10 // meters between parallel lines
-          offset = (routeIndex - (totalOverlapping - 1) / 2) * spacing
-        }
-        
         // Create metro route between consecutive stations
         const routeCoords = createMetroRouteCoordinates(currentStation.position, nextStation.position)
+        
+        // Check if this specific segment is shared with other routes
+        const segmentKey = [currentStation.id, nextStation.id].sort().join('->')
+        let offset = 0
+        
+        if (renderInfo.sharedSegments.includes(segmentKey)) {
+          // This segment is shared - use global ordering for consistent positioning
+          const segmentRoutes = sharedSegments.get(segmentKey) || []
+          
+          if (segmentRoutes.length > 1) {
+            // Advanced crossing detection and prevention system
+            const currentStationObj = gameData.stations.find(s => s.id === currentStation.id)!
+            const nextStationObj = gameData.stations.find(s => s.id === nextStation.id)!
+            
+            // Calculate segment properties
+            const segmentDx = nextStationObj.position.lng - currentStationObj.position.lng
+            const segmentDy = nextStationObj.position.lat - currentStationObj.position.lat
+            const segmentLength = Math.sqrt(segmentDx * segmentDx + segmentDy * segmentDy)
+            
+            // Analyze all routes sharing this segment to detect potential crossings
+            const routesOnSegment = segmentRoutes.map(routeId => {
+              const segmentRoute = gameData.routes.find(r => r.id === routeId)!
+              const segmentRenderInfo = routeRenderInfo.get(routeId)!
+              return {
+                routeId,
+                globalOrder: segmentRenderInfo.globalOrder,
+                route: segmentRoute
+              }
+            })
+            
+            // Calculate optimal ordering by simulating actual route positions and detecting real crossings
+            const calculateCrossings = (routeOrderMapping: Map<string, number>) => {
+              let crossingCount = 0
+              
+              // Get route coordinates for the current segment
+              const routeCoords = createMetroRouteCoordinates(currentStationObj.position, nextStationObj.position)
+              
+              // Calculate actual positions for both routes at multiple points along the segment
+              const routeIds = Array.from(routeOrderMapping.keys())
+              
+              for (let a = 0; a < routeIds.length; a++) {
+                for (let b = a + 1; b < routeIds.length; b++) {
+                  const routeA = routeIds[a]
+                  const routeB = routeIds[b]
+                  
+                  const orderA = routeOrderMapping.get(routeA) || 0
+                  const orderB = routeOrderMapping.get(routeB) || 0
+                  
+                  // Calculate positions at start, middle, and end of segment
+                  const testPoints = [0, Math.floor(routeCoords.length / 2), routeCoords.length - 1]
+                  const positionsA: number[] = []
+                  const positionsB: number[] = []
+                  
+                  testPoints.forEach(pointIndex => {
+                    if (pointIndex < routeCoords.length) {
+                      const coord = routeCoords[pointIndex]
+                      
+                      // Calculate direction vector for this point
+                      let dx = 0, dy = 0
+                      if (pointIndex > 0 && pointIndex < routeCoords.length - 1) {
+                        // Middle point - use average direction
+                        const prevCoord = routeCoords[pointIndex - 1]
+                        const nextCoord = routeCoords[pointIndex + 1]
+                        dx = (nextCoord[0] - prevCoord[0]) / 2
+                        dy = (nextCoord[1] - prevCoord[1]) / 2
+                      } else if (pointIndex > 0) {
+                        // End point
+                        const prevCoord = routeCoords[pointIndex - 1]
+                        dx = coord[0] - prevCoord[0]
+                        dy = coord[1] - prevCoord[1]
+                      } else {
+                        // Start point
+                        const nextCoord = routeCoords[pointIndex + 1]
+                        dx = nextCoord[0] - coord[0]
+                        dy = nextCoord[1] - coord[1]
+                      }
+                      
+                      const length = Math.sqrt(dx * dx + dy * dy)
+                      if (length > 0) {
+                        // Perpendicular vector for offset
+                        const perpX = -dy / length
+                        const perpY = dx / length
+                        
+                        // Determine spacing based on segment type
+                        let spacing = 25 // Default
+                        const isDiagonal = Math.abs(Math.abs(dx) - Math.abs(dy)) < 0.001 && Math.abs(dx) > 0.0001
+                        if (isDiagonal) spacing = 50
+                        
+                        // Calculate offset positions
+                        const finalOrderA = orderA - (routesOnSegment.length - 1) / 2
+                        const finalOrderB = orderB - (routesOnSegment.length - 1) / 2
+                        
+                        // Project offset distance onto perpendicular vector to get signed distance
+                        const offsetA = finalOrderA * spacing
+                        const offsetB = finalOrderB * spacing
+                        
+                        // Store the signed perpendicular distance (positive = one side, negative = other side)
+                        positionsA.push(offsetA)
+                        positionsB.push(offsetB)
+                      }
+                    }
+                  })
+                  
+                  // Check if routes cross by comparing relative positions
+                  if (positionsA.length >= 2 && positionsB.length >= 2) {
+                    for (let i = 0; i < positionsA.length - 1; i++) {
+                      const startRelativePos = positionsA[i] - positionsB[i] // A relative to B at start
+                      const endRelativePos = positionsA[i + 1] - positionsB[i + 1] // A relative to B at end
+                      
+                      // Check if routes switch relative positions (crossing detected)
+                      if ((startRelativePos > 0) !== (endRelativePos > 0) && Math.abs(startRelativePos) > 0.001 && Math.abs(endRelativePos) > 0.001) {
+                        crossingCount++
+                        break // Only count one crossing per route pair
+                      }
+                    }
+                  }
+                }
+              }
+              
+              return crossingCount
+            }
+            
+            // Test original order
+            const originalOrderMap = new Map<string, number>()
+            routesOnSegment.forEach(routeInfo => {
+              originalOrderMap.set(routeInfo.routeId, routeInfo.globalOrder)
+            })
+            const originalCrossings = calculateCrossings(originalOrderMap)
+            
+            // Test reversed order
+            const reversedOrderMap = new Map<string, number>()
+            routesOnSegment.forEach(routeInfo => {
+              reversedOrderMap.set(routeInfo.routeId, (routesOnSegment.length - 1) - routeInfo.globalOrder)
+            })
+            const reversedCrossings = calculateCrossings(reversedOrderMap)
+            
+            // Choose the order with fewer crossings
+            const optimalOrder = (reversedCrossings < originalCrossings) 
+              ? (renderInfo.groupSize - 1) - renderInfo.globalOrder 
+              : renderInfo.globalOrder
+            
+            // Store routing information for per-point offset calculation
+            offset = { 
+              baseOrder: optimalOrder,
+              groupSize: renderInfo.groupSize,
+              routeCoords: routeCoords
+            }
+          }
+        }
         
         // Convert to Three.js points with offset for parallel lines
         const startIndex = i === 0 ? 0 : 1
@@ -696,21 +952,135 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
           const coord = routeCoords[j]
           const mercator = MercatorCoordinate.fromLngLat([coord[0], coord[1]], 0)
           
-          // Apply perpendicular offset for parallel lines
+          // Apply perpendicular offset for parallel lines with adaptive spacing
           let offsetX = 0, offsetY = 0
-          if (offset !== 0 && j > 0) {
-            const prevCoord = routeCoords[j - 1]
-            // Calculate perpendicular direction
-            const dx = coord[0] - prevCoord[0]
-            const dy = coord[1] - prevCoord[1]
+          if (offset && typeof offset === 'object' && offset.baseOrder !== undefined) {
+            // Calculate segment direction with special handling for corners
+            let dx = 0, dy = 0
+            
+            if (j > 0 && j < routeCoords.length - 1) {
+              // At a corner point - special handling for diagonal to straight transitions
+              const prevCoord = routeCoords[j - 1]
+              const nextCoord = routeCoords[j + 1]
+              
+              // Incoming direction
+              const inDx = coord[0] - prevCoord[0]
+              const inDy = coord[1] - prevCoord[1]
+              const inLength = Math.sqrt(inDx * inDx + inDy * inDy)
+              
+              // Outgoing direction  
+              const outDx = nextCoord[0] - coord[0]
+              const outDy = nextCoord[1] - coord[1]
+              const outLength = Math.sqrt(outDx * outDx + outDy * outDy)
+              
+              if (inLength > 0 && outLength > 0) {
+                // Normalize directions
+                const inDxNorm = inDx / inLength
+                const inDyNorm = inDy / inLength
+                const outDxNorm = outDx / outLength
+                const outDyNorm = outDy / outLength
+                
+                // Check for diagonal to straight transitions
+                const inIsDiagonal = Math.abs(Math.abs(inDxNorm) - Math.abs(inDyNorm)) < 0.1
+                const inIsHorizontal = Math.abs(inDyNorm) < 0.1 && Math.abs(inDxNorm) > 0.9
+                const inIsVertical = Math.abs(inDxNorm) < 0.1 && Math.abs(inDyNorm) > 0.9
+                const outIsDiagonal = Math.abs(Math.abs(outDxNorm) - Math.abs(outDyNorm)) < 0.1
+                const outIsHorizontal = Math.abs(outDyNorm) < 0.1 && Math.abs(outDxNorm) > 0.9
+                const outIsVertical = Math.abs(outDxNorm) < 0.1 && Math.abs(outDyNorm) > 0.9
+                
+                // Corner order is already optimized by the crossing calculation above
+                // No additional reversal logic needed here
+                
+                if (inIsDiagonal && outIsHorizontal) {
+                  // Diagonal to horizontal: corner should align with outgoing horizontal line
+                  dx = 1 // Pure horizontal offset to maintain alignment with horizontal segment
+                  dy = 0 // No vertical offset component
+                } else if (inIsDiagonal && outIsVertical) {
+                  // Diagonal to vertical: corner should align with outgoing vertical line  
+                  dx = 0 // No horizontal offset component
+                  dy = 1 // Pure vertical offset to maintain alignment with vertical segment
+                } else {
+                  // Default bisector approach for other corner types
+                  dx = (inDxNorm + outDxNorm) / 2
+                  dy = (inDyNorm + outDyNorm) / 2
+                  
+                  // Normalize the bisector
+                  const bisectorLength = Math.sqrt(dx * dx + dy * dy)
+                  if (bisectorLength > 0) {
+                    dx = dx / bisectorLength
+                    dy = dy / bisectorLength
+                  }
+                }
+              }
+            } else if (j > 0) {
+              // End station point - use direction from previous point
+              const prevCoord = routeCoords[j - 1]
+              dx = coord[0] - prevCoord[0]
+              dy = coord[1] - prevCoord[1]
+              
+              // Station order is already optimized by the crossing calculation above
+              // No additional reversal logic needed here
+            } else if (j < routeCoords.length - 1) {
+              // Start station point - use direction to next point
+              const nextCoord = routeCoords[j + 1]
+              dx = nextCoord[0] - coord[0]
+              dy = nextCoord[1] - coord[1]
+              
+              // Station order is already optimized by the crossing calculation above
+              // No additional reversal logic needed here
+            }
+            
             const length = Math.sqrt(dx * dx + dy * dy)
             if (length > 0) {
               // Perpendicular vector (rotated 90 degrees)
               const perpX = -dy / length
               const perpY = dx / length
               
-              // Apply offset in mercator units
-              const offsetMeters = offset * mercator.meterInMercatorCoordinateUnits()
+              // Determine adaptive spacing based on local geometry and transitions
+              let spacingMeters = 25 // Default for straight segments
+              
+              if (j > 0 && j < routeCoords.length - 1) {
+                // At corner point - check transition type for appropriate spacing
+                const prevCoord = routeCoords[j - 1]
+                const nextCoord = routeCoords[j + 1]
+                
+                const inDx = coord[0] - prevCoord[0]
+                const inDy = coord[1] - prevCoord[1]
+                const outDx = nextCoord[0] - coord[0]
+                const outDy = nextCoord[1] - coord[1]
+                
+                const inLength = Math.sqrt(inDx * inDx + inDy * inDy)
+                const outLength = Math.sqrt(outDx * outDx + outDy * outDy)
+                
+                if (inLength > 0 && outLength > 0) {
+                  const inDxNorm = inDx / inLength
+                  const inDyNorm = inDy / inLength
+                  const outDxNorm = outDx / outLength
+                  const outDyNorm = outDy / outLength
+                  
+                  const inIsDiagonal = Math.abs(Math.abs(inDxNorm) - Math.abs(inDyNorm)) < 0.1
+                  const outIsHorizontal = Math.abs(outDyNorm) < 0.1 && Math.abs(outDxNorm) > 0.9
+                  const outIsVertical = Math.abs(outDxNorm) < 0.1 && Math.abs(outDyNorm) > 0.9
+                  
+                  if (inIsDiagonal && (outIsHorizontal || outIsVertical)) {
+                    // Corner transitioning from diagonal to straight - use straight spacing
+                    spacingMeters = 25
+                  } else if (inIsDiagonal) {
+                    // Still on diagonal - use diagonal spacing
+                    spacingMeters = 50
+                  }
+                }
+              } else {
+                // Not a corner - check if this point is on a diagonal segment
+                const isDiagonal = Math.abs(Math.abs(dx) - Math.abs(dy)) < 0.001 && Math.abs(dx) > 0.0001
+                if (isDiagonal) {
+                  spacingMeters = 50 // Larger spacing for diagonal segments
+                }
+              }
+              
+              // Calculate final offset position
+              const finalOrder = offset.baseOrder - (offset.groupSize - 1) / 2
+              const offsetMeters = finalOrder * spacingMeters * mercator.meterInMercatorCoordinateUnits()
               offsetX = perpX * offsetMeters
               offsetY = perpY * offsetMeters
             }
