@@ -83,17 +83,18 @@ export default function Game() {
     if (stations.length === 0 && !initialStationsCreated.current && mapHook?.map) {
       initialStationsCreated.current = true;
       const bounds = mapHook.map.getBounds();
-      // Helper to generate a random LngLat at least 100m from the map view edge
+      // Helper to generate a random LngLat at least 100m from left/right/bottom and 500m from the top edge
       const randomPositionInBounds = () => {
         const sw = bounds.getSouthWest();
         const ne = bounds.getNorthEast();
-        // Calculate 100m in degrees (approximate, varies with latitude)
-        const metersToDegreesLat = 100 / 111320; // 1 deg lat ≈ 111.32km
+        // Calculate 100m and 500m in degrees (approximate, varies with latitude)
+        const metersToDegreesLat100 = 100 / 111320; // 1 deg lat ≈ 111.32km
+        const metersToDegreesLat500 = 500 / 111320;
         const centerLat = (sw.lat + ne.lat) / 2;
         const metersToDegreesLng = 100 / (111320 * Math.cos(centerLat * Math.PI / 180));
         return {
           lng: sw.lng + metersToDegreesLng + Math.random() * ((ne.lng - sw.lng) - 2 * metersToDegreesLng),
-          lat: sw.lat + metersToDegreesLat + Math.random() * ((ne.lat - sw.lat) - 2 * metersToDegreesLat)
+          lat: sw.lat + metersToDegreesLat100 + Math.random() * ((ne.lat - sw.lat) - metersToDegreesLat100 - metersToDegreesLat500)
         };
       };
       // Add 2 stations inside the current map view, avoiding water

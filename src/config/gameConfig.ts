@@ -27,6 +27,7 @@ export const GAME_CONFIG = {
   passengerSpawnProbability: 0.065, // Balanced spawn rate for optimal gameplay
   maxStations: 8,
   initialZoom: 13,
+  maxZoom: 16,
   gameLoopInterval: 100, // milliseconds
 } as const;
 
