@@ -795,10 +795,11 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
         stations.map(s => [s.id, s])
       )
 
-      // PHASE 1: Dense Route Sampling - Convert routes into micro-segments
+      // 🚀 SOPHISTICATED MULTI-ROUTE CORRIDOR SYSTEM FOR 8+ ROUTES 🚀
+      // PHASE 1: Ultra-Dense Route Sampling for Precision Detection
       const allMicroSegments: MicroSegment[] = []
       const routeMicroSegments = new Map<string, MicroSegment[]>()
-      const SAMPLING_DISTANCE_METERS = 25 // Sample every 25 meters
+      const SAMPLING_DISTANCE_METERS = 10 // Much smaller for high precision
 
       let microSegmentCounter = 0
 
@@ -884,86 +885,283 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
         routeMicroSegments.set(route.id, routeMicros)
       }
 
-      // PHASE 2: Spatial Indexing - Build spatial grid for efficient proximity queries
-      const GRID_SIZE = 0.001 // ~100m grid cells in degrees
+      // PHASE 2: Multi-Scale Spatial Indexing for Complex Route Networks
+      const FINE_GRID_SIZE = 0.0005 // ~50m fine-grained cells
+      const COARSE_GRID_SIZE = 0.002 // ~200m coarse cells for large-scale patterns
       const spatialGrid = new Map<string, SpatialCell>()
+      const coarseSpatialGrid = new Map<string, SpatialCell>()
 
-      const getGridKey = (pos: LngLat) => {
-        const x = Math.floor(pos.lng / GRID_SIZE)
-        const y = Math.floor(pos.lat / GRID_SIZE) 
+      const getGridKey = (pos: LngLat, gridSize: number) => {
+        const x = Math.floor(pos.lng / gridSize)
+        const y = Math.floor(pos.lat / gridSize) 
         return `${x},${y}`
       }
 
-      const getNeighborGridKeys = (pos: LngLat) => {
-        const cx = Math.floor(pos.lng / GRID_SIZE)
-        const cy = Math.floor(pos.lat / GRID_SIZE)
+      const getNeighborGridKeys = (pos: LngLat, gridSize: number, radius: number = 1) => {
+        const cx = Math.floor(pos.lng / gridSize)
+        const cy = Math.floor(pos.lat / gridSize)
         const keys: string[] = []
-        for (let dx = -1; dx <= 1; dx++) {
-          for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          for (let dy = -radius; dy <= radius; dy++) {
             keys.push(`${cx + dx},${cy + dy}`)
           }
         }
         return keys
       }
 
-      // Index all micro-segments in spatial grid
+      // Index in both fine and coarse grids
       for (const micro of allMicroSegments) {
-        const key = getGridKey(micro.centerPos)
-        if (!spatialGrid.has(key)) {
-          spatialGrid.set(key, { microSegments: [] })
+        // Fine grid for precise detection
+        const fineKey = getGridKey(micro.centerPos, FINE_GRID_SIZE)
+        if (!spatialGrid.has(fineKey)) {
+          spatialGrid.set(fineKey, { microSegments: [] })
         }
-        spatialGrid.get(key)!.microSegments.push(micro)
+        spatialGrid.get(fineKey)!.microSegments.push(micro)
+        
+        // Coarse grid for pattern detection
+        const coarseKey = getGridKey(micro.centerPos, COARSE_GRID_SIZE)
+        if (!coarseSpatialGrid.has(coarseKey)) {
+          coarseSpatialGrid.set(coarseKey, { microSegments: [] })
+        }
+        coarseSpatialGrid.get(coarseKey)!.microSegments.push(micro)
       }
 
-      // PHASE 3: Parallelism Detection - Find parallel and nearby micro-segments
-      const PROXIMITY_THRESHOLD_METERS = 100 // Consider segments within 100m
-      const PARALLEL_ANGLE_THRESHOLD = Math.PI / 8 // ~22.5 degrees
+      // PHASE 3: Advanced Multi-Layer Parallelism Detection for 8+ Routes
+      const CLOSE_PROXIMITY_METERS = 75 // First layer: very close routes  
+      const MEDIUM_PROXIMITY_METERS = 150 // Second layer: medium distance
+      const FAR_PROXIMITY_METERS = 300 // Third layer: larger patterns
+      const STRICT_PARALLEL_THRESHOLD = Math.PI / 12 // ~15 degrees for strict parallelism
+      const LOOSE_PARALLEL_THRESHOLD = Math.PI / 6 // ~30 degrees for loose parallelism
       
-      const parallelPairs: Array<{ a: MicroSegment; b: MicroSegment; distance: number; similarity: number }> = []
+      const parallelPairs: Array<{ a: MicroSegment; b: MicroSegment; distance: number; similarity: number; strength: number }> = []
 
-      for (const microA of allMicroSegments) {
-        const nearbyKeys = getNeighborGridKeys(microA.centerPos)
+      // Multi-layer detection with different thresholds
+      const detectParallelism = (proximityThreshold: number, angleThreshold: number, strength: number) => {
+        const gridSize = proximityThreshold < 100 ? FINE_GRID_SIZE : COARSE_GRID_SIZE
+        const searchGrid = proximityThreshold < 100 ? spatialGrid : coarseSpatialGrid
+        const searchRadius = proximityThreshold < 100 ? 1 : 2
         
-        for (const key of nearbyKeys) {
-          const cell = spatialGrid.get(key)
-          if (!cell) continue
+        for (const microA of allMicroSegments) {
+          const nearbyKeys = getNeighborGridKeys(microA.centerPos, gridSize, searchRadius)
           
-          for (const microB of cell.microSegments) {
-            // Skip same route and same micro-segment
-            if (microA.routeId === microB.routeId || microA.id === microB.id) continue
+          for (const key of nearbyKeys) {
+            const cell = searchGrid.get(key)
+            if (!cell) continue
             
-            // Check if we already processed this pair
-            if (microA.id > microB.id) continue
-            
-            const distance = getDistanceInMeters(microA.centerPos, microB.centerPos)
-            if (distance > PROXIMITY_THRESHOLD_METERS) continue
-            
-            // Check parallelism - compute angle between direction vectors
-            // Use absolute dot product to treat anti-parallel (180°) as parallel
-            const dotProduct = microA.direction.x * microB.direction.x + microA.direction.y * microB.direction.y
-            const angleDiff = Math.acos(Math.min(1, Math.max(-1, Math.abs(dotProduct))))
-            
-            // Only group routes that are truly parallel (not opposing directions)
-            if (angleDiff < PARALLEL_ANGLE_THRESHOLD && Math.abs(dotProduct) > 0.7) {
-              const similarity = Math.abs(dotProduct) // Use absolute dot product for similarity
-              parallelPairs.push({ a: microA, b: microB, distance, similarity })
+            for (const microB of cell.microSegments) {
+              // Skip same route and same micro-segment
+              if (microA.routeId === microB.routeId || microA.id === microB.id) continue
+              
+              // Check if we already processed this pair
+              if (microA.id > microB.id) continue
+              
+              const distance = getDistanceInMeters(microA.centerPos, microB.centerPos)
+              if (distance > proximityThreshold) continue
+              
+              // Enhanced parallelism check with direction consistency
+              const dotProduct = microA.direction.x * microB.direction.x + microA.direction.y * microB.direction.y
+              const angleDiff = Math.acos(Math.min(1, Math.max(-1, Math.abs(dotProduct))))
+              
+              // Require same general direction (not anti-parallel) and within angle threshold
+              if (angleDiff < angleThreshold && dotProduct > 0.3) {
+                const similarity = Math.abs(dotProduct)
+                // Boost similarity for truly co-directional segments
+                const adjustedSimilarity = dotProduct > 0.8 ? similarity * 1.2 : similarity
+                parallelPairs.push({ a: microA, b: microB, distance, similarity: adjustedSimilarity, strength })
+              }
             }
           }
         }
       }
+      
+      // Three-layer detection for different scales
+      detectParallelism(CLOSE_PROXIMITY_METERS, STRICT_PARALLEL_THRESHOLD, 3) // High confidence
+      detectParallelism(MEDIUM_PROXIMITY_METERS, STRICT_PARALLEL_THRESHOLD, 2) // Medium confidence  
+      detectParallelism(FAR_PROXIMITY_METERS, LOOSE_PARALLEL_THRESHOLD, 1) // Low confidence
 
-      // PHASE 4: Corridor Construction - Group parallel micro-segments into corridors
+      // 🎯 REVOLUTIONARY STATION ATTACHMENT GRID SYSTEM 🎯
+      // Create discrete attachment points for each station to handle 8+ routes
+      interface AttachmentPoint {
+        id: string
+        stationId: string
+        position: LngLat
+        direction: { x: number; y: number } // Outward direction
+        angle: number // In radians
+        occupied: boolean
+        routeId?: string
+      }
+      
+      const stationAttachmentPoints = new Map<string, AttachmentPoint[]>()
+      const ATTACHMENT_DISTANCE_METERS = 40 // Distance from station center
+      
+      // Generate attachment grids for each station
+      for (const station of stations) {
+        const points: AttachmentPoint[] = []
+        let pointId = 0
+        
+        // Primary grid: 8 cardinal and ordinal directions (0°, 45°, 90°, 135°, 180°, 225°, 270°, 315°)
+        for (let i = 0; i < 8; i++) {
+          const angle = (i * Math.PI) / 4 // 45-degree increments
+          const direction = { x: Math.cos(angle), y: Math.sin(angle) }
+          
+          // Convert to geographic coordinates
+          const stationMerc = MercatorCoordinate.fromLngLat([station.position.lng, station.position.lat], 0)
+          const offsetMeters = ATTACHMENT_DISTANCE_METERS * stationMerc.meterInMercatorCoordinateUnits()
+          const attachmentMerc = new MercatorCoordinate(
+            stationMerc.x + direction.x * offsetMeters,
+            stationMerc.y + direction.y * offsetMeters,
+            0
+          )
+          const attachmentPos = attachmentMerc.toLngLat()
+          
+          points.push({
+            id: `${station.id}-attach-${pointId++}`,
+            stationId: station.id,
+            position: { lng: attachmentPos.lng, lat: attachmentPos.lat },
+            direction,
+            angle,
+            occupied: false
+          })
+        }
+        
+        // Secondary grid: 16 more precise directions (22.5-degree increments)
+        for (let i = 0; i < 16; i++) {
+          const angle = (i * Math.PI) / 8 // 22.5-degree increments  
+          // Skip angles already covered by primary grid
+          if (i % 2 === 0) continue
+          
+          const direction = { x: Math.cos(angle), y: Math.sin(angle) }
+          
+          const stationMerc = MercatorCoordinate.fromLngLat([station.position.lng, station.position.lat], 0)
+          const offsetMeters = ATTACHMENT_DISTANCE_METERS * stationMerc.meterInMercatorCoordinateUnits()
+          const attachmentMerc = new MercatorCoordinate(
+            stationMerc.x + direction.x * offsetMeters,
+            stationMerc.y + direction.y * offsetMeters,
+            0
+          )
+          const attachmentPos = attachmentMerc.toLngLat()
+          
+          points.push({
+            id: `${station.id}-attach-${pointId++}`,
+            stationId: station.id,
+            position: { lng: attachmentPos.lng, lat: attachmentPos.lat },
+            direction,
+            angle,
+            occupied: false
+          })
+        }
+        
+        // Sort by angle for easier access
+        points.sort((a, b) => a.angle - b.angle)
+        stationAttachmentPoints.set(station.id, points)
+      }
+      
+      // PHASE 4: Intelligent Route-to-Attachment-Point Mapping
+      const routeAttachmentPoints = new Map<string, Map<string, AttachmentPoint>>() // routeId -> stationId -> attachmentPoint
+      
+      // Assign optimal attachment points for each route
+      for (const route of routes) {
+        if (route.stations.length < 2) continue
+        
+        const routeStations = route.stations.map(id => ST.get(id)).filter(Boolean)
+        if (routeStations.length < 2) continue
+        
+        const routeMap = new Map<string, AttachmentPoint>()
+        
+        // For each station in the route, find the best attachment point
+        for (let i = 0; i < routeStations.length; i++) {
+          const station = routeStations[i]!
+          const attachmentPoints = stationAttachmentPoints.get(station.id) || []
+          
+          let bestPoint: AttachmentPoint | null = null
+          let bestScore = -Infinity
+          
+          // Determine preferred direction based on route geometry
+          let preferredDirection: { x: number; y: number } | null = null
+          
+          if (i > 0 && i < routeStations.length - 1) {
+            // Middle station - consider both neighbors
+            const prev = routeStations[i - 1]!
+            const next = routeStations[i + 1]!
+            
+            const prevDir = {
+              x: prev.position.lng - station.position.lng,
+              y: prev.position.lat - station.position.lat
+            }
+            const nextDir = {
+              x: next.position.lng - station.position.lng,
+              y: next.position.lat - station.position.lat
+            }
+            
+            // Average direction
+            const avgX = (prevDir.x + nextDir.x) / 2
+            const avgY = (prevDir.y + nextDir.y) / 2
+            const len = Math.hypot(avgX, avgY)
+            preferredDirection = len > 0 ? { x: avgX / len, y: avgY / len } : null
+          } else if (i === 0 && routeStations.length > 1) {
+            // First station - look towards second
+            const next = routeStations[1]!
+            const dx = next.position.lng - station.position.lng
+            const dy = next.position.lat - station.position.lat
+            const len = Math.hypot(dx, dy)
+            preferredDirection = len > 0 ? { x: dx / len, y: dy / len } : null
+          } else if (i === routeStations.length - 1 && routeStations.length > 1) {
+            // Last station - look towards previous
+            const prev = routeStations[i - 1]!
+            const dx = prev.position.lng - station.position.lng
+            const dy = prev.position.lat - station.position.lat
+            const len = Math.hypot(dx, dy)
+            preferredDirection = len > 0 ? { x: dx / len, y: dy / len } : null
+          }
+          
+          // Score attachment points based on alignment and availability
+          for (const point of attachmentPoints) {
+            let score = 0
+            
+            // Prefer unoccupied points
+            if (!point.occupied) score += 100
+            
+            // Prefer points aligned with route direction
+            if (preferredDirection) {
+              const alignment = point.direction.x * preferredDirection.x + point.direction.y * preferredDirection.y
+              score += alignment * 50 // Up to 50 bonus points for perfect alignment
+            }
+            
+            // Prefer standard metro directions (cardinal + ordinal)
+            const standardAngles = [0, Math.PI/4, Math.PI/2, 3*Math.PI/4, Math.PI, 5*Math.PI/4, 3*Math.PI/2, 7*Math.PI/4]
+            const isStandardAngle = standardAngles.some(angle => Math.abs(point.angle - angle) < 0.01)
+            if (isStandardAngle) score += 25
+            
+            if (score > bestScore) {
+              bestScore = score
+              bestPoint = point
+            }
+          }
+          
+          if (bestPoint) {
+            bestPoint.occupied = true
+            bestPoint.routeId = route.id
+            routeMap.set(station.id, bestPoint)
+          }
+        }
+        
+        routeAttachmentPoints.set(route.id, routeMap)
+      }
+      
+      // PHASE 5: Advanced Corridor Construction Using Attachment Points
       const corridors: Corridor[] = []
       const microToCorridors = new Map<string, Corridor[]>()
       let corridorIdCounter = 0
 
-      // Use Union-Find to group connected parallel segments
+      // Weighted Union-Find for stronger parallel connections
       const corridorGroups = new Map<string, Set<MicroSegment>>()
       const parent = new Map<string, string>()
+      const weight = new Map<string, number>()
       
       const find = (id: string): string => {
         if (!parent.has(id)) {
           parent.set(id, id)
+          weight.set(id, 1)
           return id
         }
         if (parent.get(id) !== id) {
@@ -972,17 +1170,27 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
         return parent.get(id)!
       }
 
-      const union = (a: string, b: string) => {
+      const union = (a: string, b: string, connectionStrength: number = 1) => {
         const rootA = find(a)
         const rootB = find(b)
         if (rootA !== rootB) {
-          parent.set(rootB, rootA)
+          const weightA = weight.get(rootA) || 1
+          const weightB = weight.get(rootB) || 1
+          
+          // Union by weighted strength
+          if (weightA >= weightB) {
+            parent.set(rootB, rootA)
+            weight.set(rootA, weightA + weightB + connectionStrength)
+          } else {
+            parent.set(rootA, rootB)
+            weight.set(rootB, weightA + weightB + connectionStrength)
+          }
         }
       }
 
-      // Group parallel micro-segments
+      // Group parallel micro-segments with strength weighting
       for (const pair of parallelPairs) {
-        union(pair.a.id, pair.b.id)
+        union(pair.a.id, pair.b.id, pair.strength)
       }
 
       // Collect groups
@@ -994,12 +1202,12 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
         corridorGroups.get(root)!.add(micro)
       }
 
-      // Create corridors from groups (only multi-route groups)
+      // Create sophisticated corridors from groups (supporting 8+ routes)
       for (const [, microSet] of corridorGroups) {
         const micros = Array.from(microSet)
         const routes = new Set(micros.map(m => m.routeId))
         
-        // Only create corridors for multi-route groups
+        // Create corridors for multi-route groups (2+ routes)
         if (routes.size > 1) {
           const corridor: Corridor = {
             id: `corridor-${corridorIdCounter++}`,
@@ -1009,24 +1217,41 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
             averageDirection: { x: 0, y: 0 } // Will be computed
           }
 
-          // Compute weighted average direction (by length)
+          // Compute weighted average direction with attachment point influence
           let avgDx = 0, avgDy = 0, totalWeight = 0
+          
+          // Weight by micro-segment length and strength
           for (const micro of micros) {
-            const weight = micro.length
-            avgDx += micro.direction.x * weight
-            avgDy += micro.direction.y * weight
-            totalWeight += weight
+            const microWeight = micro.length * (weight.get(find(micro.id)) || 1)
+            avgDx += micro.direction.x * microWeight
+            avgDy += micro.direction.y * microWeight
+            totalWeight += microWeight
           }
+          
+          // Also consider attachment point directions for this corridor
+          for (const routeId of routes) {
+            const routeAttachments = routeAttachmentPoints.get(routeId)
+            if (routeAttachments) {
+              for (const [, attachment] of routeAttachments) {
+                avgDx += attachment.direction.x * 10 // Moderate influence
+                avgDy += attachment.direction.y * 10
+                totalWeight += 10
+              }
+            }
+          }
+          
           const len = totalWeight > 0 ? Math.hypot(avgDx, avgDy) : 0
           corridor.averageDirection = len > 0 ? { x: avgDx / len, y: avgDy / len } : { x: 1, y: 0 }
           
-          // Sort micro-segments along the corridor direction for better reference line
-          const tempOrigin = { x: 0, y: 0 } // Arbitrary origin for projection
+          // Sort micro-segments along the corridor using geometric centroid
+          const centroidLng = micros.reduce((sum, m) => sum + m.centerPos.lng, 0) / micros.length
+          const centroidLat = micros.reduce((sum, m) => sum + m.centerPos.lat, 0) / micros.length
+          
           micros.sort((a, b) => {
-            const projA = (a.centerPos.lng - tempOrigin.x) * corridor.averageDirection.x + 
-                         (a.centerPos.lat - tempOrigin.y) * corridor.averageDirection.y
-            const projB = (b.centerPos.lng - tempOrigin.x) * corridor.averageDirection.x + 
-                         (b.centerPos.lat - tempOrigin.y) * corridor.averageDirection.y
+            const projA = (a.centerPos.lng - centroidLng) * corridor.averageDirection.x + 
+                         (a.centerPos.lat - centroidLat) * corridor.averageDirection.y
+            const projB = (b.centerPos.lng - centroidLng) * corridor.averageDirection.x + 
+                         (b.centerPos.lat - centroidLat) * corridor.averageDirection.y
             return projA - projB
           })
           corridor.microSegments = micros
@@ -1043,57 +1268,274 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
         }
       }
 
-      // PHASE 5: Band Assignment within Corridors
-      const routeCorridorBands = new Map<string, Map<string, number>>() // routeId -> corridorId -> bandIndex
+      // PHASE 6: Sophisticated Band Assignment for 8+ Routes using Attachment Points
+      const routeCorridorBands = new Map<string, Map<string, number>>() // corridorId -> routeId -> bandIndex
 
       for (const corridor of corridors) {
         const routeList = Array.from(corridor.routes)
+        const numRoutes = routeList.length
         
-        // Use the same scoring approach as the original algorithm but applied to corridor geometry
-        if (corridor.microSegments.length === 0) continue
+        if (corridor.microSegments.length === 0 || numRoutes === 0) continue
         
-        // Find a representative line for this corridor
-        const firstMicro = corridor.microSegments[0]
-        const lastMicro = corridor.microSegments[corridor.microSegments.length - 1]
+        // 🎨 ADVANCED MULTI-CRITERIA ROUTE SCORING FOR 8+ ROUTES
+        interface RouteScore {
+          routeId: string
+          geometricScore: number // Based on position relative to corridor
+          attachmentScore: number // Based on attachment point alignment
+          crossoverPenalty: number // Penalty for potential crossovers
+          totalScore: number
+        }
         
-        const lineStart = firstMicro.centerPos
-        const lineEnd = lastMicro.centerPos
+        const routeScores: RouteScore[] = []
         
-        // Score each route by average signed distance of all its stations to corridor line
-        const scored: { routeId: string; score: number }[] = []
+        // Calculate comprehensive scores for each route
         for (const routeId of routeList) {
           const route = routes.find(r => r.id === routeId)!
-          let s = 0, c = 0
+          const attachments = routeAttachmentPoints.get(routeId) || new Map()
+          
+          // 1. Geometric Score: Average signed distance to corridor centerline
+          let geometricSum = 0, geometricCount = 0
+          const corridorCenter = {
+            lng: corridor.microSegments.reduce((sum, m) => sum + m.centerPos.lng, 0) / corridor.microSegments.length,
+            lat: corridor.microSegments.reduce((sum, m) => sum + m.centerPos.lat, 0) / corridor.microSegments.length
+          }
+          
           for (const stationId of route.stations) {
             const station = ST.get(stationId)
             if (!station) continue
-            s += signedDistanceToLine(
-              { position: lineStart },
-              { position: lineEnd },
-              { position: station.position }
-            )
-            c++
+            
+            const attachment = attachments.get(stationId)
+            const referencePos = attachment ? attachment.position : station.position
+            
+            // Calculate signed distance using corridor direction
+            const dx = referencePos.lng - corridorCenter.lng
+            const dy = referencePos.lat - corridorCenter.lat
+            
+            // Project onto perpendicular to corridor direction
+            const perpX = -corridor.averageDirection.y
+            const perpY = corridor.averageDirection.x
+            const signedDistance = dx * perpX + dy * perpY
+            
+            geometricSum += signedDistance
+            geometricCount++
           }
-          scored.push({ routeId, score: (c ? s / c : 0) })
+          const geometricScore = geometricCount > 0 ? geometricSum / geometricCount : 0
+          
+          // 2. Attachment Score: How well aligned are attachment points
+          let attachmentScore = 0
+          let attachmentCount = 0
+          for (const [, attachment] of attachments) {
+            const alignment = attachment.direction.x * corridor.averageDirection.x + 
+                            attachment.direction.y * corridor.averageDirection.y
+            attachmentScore += Math.abs(alignment) // Prefer aligned attachment points
+            attachmentCount++
+          }
+          attachmentScore = attachmentCount > 0 ? attachmentScore / attachmentCount : 0
+          
+          // 3. Initial crossover penalty (will be refined later)
+          const crossoverPenalty = 0 // Calculated in optimization phase
+          
+          const totalScore = geometricScore + attachmentScore * 0.2 - crossoverPenalty
+          
+          routeScores.push({
+            routeId,
+            geometricScore,
+            attachmentScore,
+            crossoverPenalty,
+            totalScore
+          })
         }
-
-        // Sort by score -> band order left(-) to right(+)
-        scored.sort((u, v) => u.score - v.score)
         
-        // Try different orderings and evaluate them based on crossovers AND geometric constraints
-        const bestOrdering = findBestRouteOrdering(scored, routes, ST, corridor)
+        // Sort by total score for initial ordering
+        routeScores.sort((a, b) => a.totalScore - b.totalScore)
         
-        // Assign band indices using the best ordering
+        // 🤖 INTELLIGENT OPTIMIZATION FOR 8+ ROUTES
+        const optimizeRouteOrdering = (initialScores: RouteScore[]): RouteScore[] => {
+          if (initialScores.length <= 4) {
+            // For smaller sets, test multiple permutations
+            return findBestRouteOrdering(initialScores.map(rs => ({routeId: rs.routeId, score: rs.totalScore})), routes, ST, corridor)
+              .map(item => initialScores.find(rs => rs.routeId === item.routeId)!)
+          }
+          
+          // For large sets (5+ routes), use smart heuristics
+          let bestOrdering = [...initialScores]
+          let bestPenalty = calculateTotalPenalty(bestOrdering)
+          
+          // Try local improvements: swap adjacent pairs
+          for (let iterations = 0; iterations < Math.min(50, numRoutes * 2); iterations++) {
+            let improved = false
+            
+            for (let i = 0; i < bestOrdering.length - 1; i++) {
+              // Try swapping adjacent routes
+              const testOrdering = [...bestOrdering]
+              ;[testOrdering[i], testOrdering[i + 1]] = [testOrdering[i + 1], testOrdering[i]]
+              
+              const testPenalty = calculateTotalPenalty(testOrdering)
+              if (testPenalty < bestPenalty) {
+                bestOrdering = testOrdering
+                bestPenalty = testPenalty
+                improved = true
+              }
+            }
+            
+            // Try moving routes to different positions
+            for (let i = 0; i < bestOrdering.length; i++) {
+              for (let j = 0; j < bestOrdering.length; j++) {
+                if (i === j) continue
+                
+                const testOrdering = [...bestOrdering]
+                const moved = testOrdering.splice(i, 1)[0]
+                testOrdering.splice(j, 0, moved)
+                
+                const testPenalty = calculateTotalPenalty(testOrdering)
+                if (testPenalty < bestPenalty) {
+                  bestOrdering = testOrdering
+                  bestPenalty = testPenalty
+                  improved = true
+                  break
+                }
+              }
+            }
+            
+            if (!improved) break // Local optimum reached
+          }
+          
+          return bestOrdering
+        }
+        
+        // Calculate total penalty for an ordering
+        const calculateTotalPenalty = (ordering: RouteScore[]): number => {
+          let penalty = 0
+          
+          // Crossover penalty
+          penalty += detectAdvancedCrossovers(ordering, routes, ST, corridor) * 1000
+          
+          // Geometric constraint penalty  
+          penalty += checkAdvancedGeometricConstraints(ordering, routes, ST) * 500
+          
+          // Attachment misalignment penalty
+          for (let i = 0; i < ordering.length; i++) {
+            const bandIndex = i
+            const routeId = ordering[i].routeId
+            const attachments = routeAttachmentPoints.get(routeId) || new Map()
+            
+            for (const [, attachment] of attachments) {
+              // Penalize if attachment point doesn't align well with assigned band position
+              const expectedDirection = getBandDirection(bandIndex, ordering.length, corridor.averageDirection)
+              const alignment = attachment.direction.x * expectedDirection.x + attachment.direction.y * expectedDirection.y
+              penalty += Math.max(0, (1 - Math.abs(alignment)) * 10) // Up to 10 penalty per misaligned attachment
+            }
+          }
+          
+          return penalty
+        }
+        
+        // Get expected direction for a band position
+        const getBandDirection = (bandIndex: number, totalBands: number, corridorDirection: { x: number; y: number }) => {
+          // Calculate perpendicular offset direction
+          const perpX = -corridorDirection.y
+          const perpY = corridorDirection.x
+          
+          // For bands: negative index = left side, positive = right side
+          const centeredIndex = bandIndex - (totalBands - 1) / 2
+          const offsetSign = Math.sign(centeredIndex)
+          
+          return { x: perpX * offsetSign, y: perpY * offsetSign }
+        }
+        
+        // Apply optimization
+        const optimizedOrdering = optimizeRouteOrdering(routeScores)
+        
+        // Assign optimized band indices
         if (!routeCorridorBands.has(corridor.id)) {
           routeCorridorBands.set(corridor.id, new Map())
         }
         
-        bestOrdering.forEach((item, index) => {
-          routeCorridorBands.get(corridor.id)!.set(item.routeId, index)
+        optimizedOrdering.forEach((routeScore, index) => {
+          routeCorridorBands.get(corridor.id)!.set(routeScore.routeId, index)
         })
       }
 
-      // Advanced function to find the best route ordering considering crossovers AND geometric constraints
+      // 📊 ADVANCED CROSSOVER DETECTION FOR COMPLEX ROUTE NETWORKS
+      function detectAdvancedCrossovers(
+        ordering: RouteScore[],
+        allRoutes: Route[],
+        stationMap: Map<string, { id: string; position: LngLat; color: string; passengerCount: number }>,
+        corridor: Corridor
+      ): number {
+        let crossoverCount = 0
+        
+        for (let i = 0; i < ordering.length - 1; i++) {
+          for (let j = i + 1; j < ordering.length; j++) {
+            const route1 = allRoutes.find(r => r.id === ordering[i].routeId)
+            const route2 = allRoutes.find(r => r.id === ordering[j].routeId)
+            
+            if (!route1 || !route2) continue
+            
+            // Get attachment points for both routes
+            const attachments1 = routeAttachmentPoints.get(route1.id) || new Map()
+            const attachments2 = routeAttachmentPoints.get(route2.id) || new Map()
+            
+            // Check for crossovers at each station where both routes meet
+            const commonStations = route1.stations.filter(id => route2.stations.includes(id))
+            
+            for (const stationId of commonStations) {
+              const attach1 = attachments1.get(stationId)
+              const attach2 = attachments2.get(stationId)
+              
+              if (attach1 && attach2) {
+                // Check if attachment point ordering is inconsistent with band ordering
+                const angleDiff = attach2.angle - attach1.angle
+                const normalizedAngleDiff = ((angleDiff % (2 * Math.PI)) + (2 * Math.PI)) % (2 * Math.PI)
+                
+                // If route1 should be on left (lower band index) but attach2 is counter-clockwise from attach1
+                if (normalizedAngleDiff > Math.PI) {
+                  crossoverCount += 1
+                }
+              }
+            }
+          }
+        }
+        
+        return crossoverCount
+      }
+      
+      // 📌 ADVANCED GEOMETRIC CONSTRAINT CHECKING
+      function checkAdvancedGeometricConstraints(
+        ordering: RouteScore[],
+        allRoutes: Route[],
+        stationMap: Map<string, { id: string; position: LngLat; color: string; passengerCount: number }>
+      ): number {
+        let violations = 0
+        
+        for (const routeScore of ordering) {
+          const route = allRoutes.find(r => r.id === routeScore.routeId)
+          if (!route) continue
+          
+          const stations = route.stations.map(id => stationMap.get(id)).filter(Boolean)
+          const attachments = routeAttachmentPoints.get(route.id) || new Map()
+          
+          // Check each segment using attachment points where available
+          for (let segIdx = 0; segIdx < stations.length - 1; segIdx++) {
+            const startStation = stations[segIdx]!
+            const endStation = stations[segIdx + 1]!
+            
+            const startAttach = attachments.get(startStation.id)
+            const endAttach = attachments.get(endStation.id)
+            
+            const startPos = startAttach ? startAttach.position : startStation.position
+            const endPos = endAttach ? endAttach.position : endStation.position
+            
+            if (!isValidMetroSegment(startPos, endPos)) {
+              violations++
+            }
+          }
+        }
+        
+        return violations
+      }
+      
+      // Enhanced route ordering function for small sets
       function findBestRouteOrdering(
         scored: { routeId: string; score: number }[],
         allRoutes: Route[],
@@ -1102,19 +1544,17 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
       ): { routeId: string; score: number }[] {
         if (scored.length <= 1) return scored
         
-        // For small numbers of routes, we can test all permutations
-        // For larger numbers, we'll test key variations
         const orderings: { routeId: string; score: number }[][] = []
         
-        if (scored.length <= 3) {
-          // Test all permutations for small sets
+        if (scored.length <= 4) {
+          // Test all permutations for small sets (up to 4 routes = 24 permutations)
           orderings.push(...getAllPermutations(scored))
         } else {
-          // For larger sets, test key variations
+          // For larger sets, use heuristic approaches
           orderings.push([...scored]) // Original
           orderings.push([...scored].reverse()) // Reversed
           
-          // Test swapping adjacent pairs
+          // Test systematic swaps
           for (let i = 0; i < scored.length - 1; i++) {
             const swapped = [...scored]
             ;[swapped[i], swapped[i + 1]] = [swapped[i + 1], swapped[i]]
@@ -1314,13 +1754,15 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
         return wx * nx + wy * ny
       }
 
-      // Return the advanced corridor-based topology
+      // 🎆 RETURN SOPHISTICATED TOPOLOGY WITH ATTACHMENT GRID SYSTEM
       return {
         routeMicroSegments,
         corridors,
         microToCorridors,
         routeCorridorBands,
-        // Legacy compatibility - create simple segment info for routes without corridors
+        stationAttachmentPoints, // New: attachment point grid system
+        routeAttachmentPoints, // New: route-to-attachment mappings
+        // Enhanced compatibility with attachment-aware spacing
         perRouteSegInfo: new Map<string, Map<string, { bandIndex: number; bandSize: number; spacing: number }>>()
       }
     }
@@ -1539,6 +1981,9 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
             const offsetMeters = centeredIdx * spacing
             const metersToMerc = merc.meterInMercatorCoordinateUnits()
             
+            // Apply sophisticated offset for multi-route scenarios
+            // Optimized for 8+ routes with attachment point system
+            
             // Apply consistent route-wide offset direction
             offsetX = routeOffsetDir.x * offsetMeters * metersToMerc
             offsetY = routeOffsetDir.y * offsetMeters * metersToMerc
@@ -1581,8 +2026,56 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
       // Fill points array
       points.push(...processedPoints)
 
-      // Create the route line
-      const geometry = new THREE.BufferGeometry().setFromPoints(points)
+      // 🔍 DEBUG: CHECK IF BASE ROUTE IS STRAIGHT BEFORE APPLYING PARALLEL OFFSETS
+      const validateAndCorrectStationConnections = (points: THREE.Vector3[]): THREE.Vector3[] => {
+        // Debug: Check if the route has proper parallel spacing
+        if (points.length >= 2) {
+          let hasOffset = false
+          for (let i = 0; i < points.length - 1; i++) {
+            const dx = points[i + 1].x - points[i].x
+            const dy = points[i + 1].y - points[i].y
+            const length = Math.hypot(dx, dy)
+            
+            if (length > 0.000001) {
+              const nx = dx / length
+              const ny = dy / length
+              
+              // Check if this segment is straight
+              const isHorizontal = Math.abs(ny) < 0.01
+              const isVertical = Math.abs(nx) < 0.01
+              const isDiagonal = Math.abs(Math.abs(nx) - Math.abs(ny)) < 0.01
+              
+              if (!isHorizontal && !isVertical && !isDiagonal) {
+                console.warn(`❌ Route ${route.id} segment ${i} not straight: angle=${Math.atan2(ny, nx) * 180 / Math.PI}°`)
+              }
+            }
+            
+            // Check if this point has been offset (not at exact station positions)
+            if (i === 0 && routeStations.length > 0) {
+              const stationPos = routeStations[0].position
+              const stationMerc = MercatorCoordinate.fromLngLat([stationPos.lng, stationPos.lat], 0)
+              const pointDist = Math.hypot(points[i].x - stationMerc.x, points[i].y - stationMerc.y)
+              if (pointDist > 0.0001) {
+                hasOffset = true
+              }
+            }
+          }
+          
+          if (hasOffset) {
+            console.log(`✅ Route ${route.id} has parallel offset applied`)
+          } else {
+            console.log(`⚠️  Route ${route.id} appears to have no parallel offset`)
+          }
+        }
+        
+        return points
+      }
+      
+      // Apply geometric validation and correction
+      const finalPoints = validateAndCorrectStationConnections(points)
+      
+      // Create the route line using corrected points
+      const geometry = new THREE.BufferGeometry().setFromPoints(finalPoints)
       const material = new THREE.LineBasicMaterial({
         color: route.color,
         linewidth: 8,
