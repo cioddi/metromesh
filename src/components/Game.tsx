@@ -20,6 +20,7 @@ export default function Game() {
     isPlaying,
     selectedStationId,
     isGameOver,
+    lastStationSpawnTime,
     addStation,
     addRoute,
     extendRoute,
@@ -79,49 +80,53 @@ export default function Game() {
       
       // Query features in a larger area around the position
       const radius = 50; // pixels
-      const bbox: [number, number, number, number] = [
-        point.x - radius, 
-        point.y - radius, 
-        point.x + radius, 
-        point.y + radius
+      const bbox: [[number, number], [number, number]] = [
+        [point.x - radius, point.y - radius], // top-left
+        [point.x + radius, point.y + radius]  // bottom-right
       ];
       
-      const features = mapHook.map.queryRenderedFeatures(bbox);
+      // Query only building layer features in the bbox
+      const features = mapHook.map.queryRenderedFeatures(bbox, {
+        layers: ['building']
+      });
       
-      let buildingCount = 0;
-      let totalFeatures = 0;
+      // Since we're querying specifically the 'building' layer, all features are buildings
+      const buildingCount = features.length;
+      const totalFeatures = features.length;
       
-      for (const feature of features) {
-        totalFeatures++;
-        const layerName = feature.layer?.id?.toLowerCase() || '';
-        const sourceLayer = feature.sourceLayer?.toLowerCase() || '';
-        const featureType = feature.properties?.class?.toLowerCase() || '';
-        const landuse = feature.properties?.landuse?.toLowerCase() || '';
-        const building = feature.properties?.building || '';
-        
-        // Check for building indicators
-        if (
-          layerName.includes('building') ||
-          layerName.includes('house') ||
-          sourceLayer.includes('building') ||
-          featureType === 'building' ||
-          landuse === 'residential' ||
-          landuse === 'commercial' ||
-          landuse === 'industrial' ||
-          building === 'yes' ||
-          building === 'house' ||
-          building === 'residential'
-        ) {
-          buildingCount++;
-        }
+      // Debug: Log building count occasionally
+      if (features.length > 0 && Math.random() < 0.05) { // Log 5% of the time
+        console.log('🏢 Building density debug:', {
+          buildingFeatures: buildingCount,
+          position: `${position.lat.toFixed(4)}, ${position.lng.toFixed(4)}`
+        });
       }
       
-      // Normalize to 0-1 range
-      if (totalFeatures === 0) return 0.3; // Default low density
-      const density = Math.min(buildingCount / Math.max(totalFeatures, 10), 1.0);
+      // Convert building count to density (0-1 range)
+      if (buildingCount === 0) return 0.2; // Rural - no buildings
       
-      // Apply minimum and scale to useful range (0.2 to 1.0)
-      return 0.2 + density * 0.8;
+      // Scale building count to density
+      // Adjust these thresholds based on typical building counts in your map
+      let rawDensity;
+      if (buildingCount <= 2) rawDensity = 0.3;      // Low density
+      else if (buildingCount <= 8) rawDensity = 0.5; // Medium density  
+      else if (buildingCount <= 15) rawDensity = 0.7; // High density
+      else rawDensity = 1.0;                         // Urban core
+      
+      // Apply final scaling to 0.2-1.0 range
+      const finalDensity = 0.2 + rawDensity * 0.8;
+      
+      // Debug: Log density calculation occasionally
+      if (Math.random() < 0.05) { // Log 5% of the time
+        console.log('🏢 Density calculation:', {
+          buildingCount,
+          rawDensity,
+          finalDensity,
+          position: `${position.lat.toFixed(4)}, ${position.lng.toFixed(4)}`
+        });
+      }
+      
+      return finalDensity;
       
     } catch (error) {
       console.warn('Error calculating building density:', error);
@@ -183,8 +188,13 @@ export default function Game() {
     const gameLoop = setInterval(() => {
       updateTrainPositions();
 
-      // Automatically add stations
-      if (Math.random() < GAME_CONFIG.stationSpawnProbability && stations.length < GAME_CONFIG.maxStations) {
+      // Automatically add stations with timing constraints
+      const timeSinceLastStationSpawn = Date.now() - lastStationSpawnTime;
+      const hasMinDelayPassed = timeSinceLastStationSpawn > GAME_CONFIG.minStationSpawnDelay;
+      const shouldForceSpawn = timeSinceLastStationSpawn > GAME_CONFIG.maxStationSpawnDelay;
+      const shouldRandomSpawn = Math.random() < GAME_CONFIG.stationSpawnProbability;
+      
+      if (hasMinDelayPassed && (shouldRandomSpawn || shouldForceSpawn) && stations.length < GAME_CONFIG.maxStations) {
         addStation(undefined, isPositionOnWater, getBuildingDensity); // No position provided = random placement, avoiding water
       }
 
@@ -209,6 +219,7 @@ export default function Game() {
     addStation,
     addPassengerToStation,
     stations,
+    lastStationSpawnTime,
     isPositionOnWater,
     getBuildingDensity,
   ]);

@@ -46,6 +46,7 @@ interface GameState {
     gameTime: number
   } | null
   gameStartTime: number
+  lastStationSpawnTime: number
 }
 
 interface GameActions {
@@ -77,6 +78,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   gameOverReason: null,
   gameOverStats: null,
   gameStartTime: Date.now(),
+  lastStationSpawnTime: Date.now(),
 
   // Actions
   addStation: (position, waterCheckFn, buildingDensityFn) => {
@@ -101,7 +103,10 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       buildingDensity
     }
 
-    set({ stations: [...state.stations, newStation] })
+    set({ 
+      stations: [...state.stations, newStation],
+      lastStationSpawnTime: Date.now()
+    })
   },
 
   addRoute: (stationIds, color) => {
@@ -337,7 +342,8 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       isGameOver: false,
       gameOverReason: null,
       gameOverStats: null,
-      gameStartTime: Date.now()
+      gameStartTime: Date.now(),
+      lastStationSpawnTime: Date.now()
     })
   },
 

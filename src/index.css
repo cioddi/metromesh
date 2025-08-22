@@ -766,6 +766,22 @@ body {
   font-weight: 500;
 }
 
+.density-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.density-emoji {
+  font-size: 16px;
+}
+
+.density-text {
+  font-size: 12px;
+  font-weight: 500;
+  color: #666;
+}
+
 @media (max-width: 768px) {
   .selected-station-info {
     bottom: 10px;

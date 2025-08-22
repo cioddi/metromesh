@@ -29,6 +29,8 @@ export const GAME_CONFIG = {
   initialZoom: 13,
   maxZoom: 16,
   gameLoopInterval: 100, // milliseconds
+  minStationSpawnDelay: 15000, // Minimum time (ms) between station spawns - prevents too frequent spawning
+  maxStationSpawnDelay: 20000, // Maximum time (ms) between station spawns - guarantees station every 20s
 } as const;
 
 // Performance settings
@@ -42,7 +44,7 @@ export const PERFORMANCE_CONFIG = {
 
 // Train settings
 export const TRAIN_CONFIG = {
-  defaultSpeedKmh: 500, // Speed in km/h
+  defaultSpeedKmh: 700, // Speed in km/h
   defaultCapacity: 6,
 } as const;
 

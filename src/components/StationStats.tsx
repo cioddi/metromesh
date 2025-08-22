@@ -16,6 +16,27 @@ export default function StationStats() {
   // Find routes connected to this station
   const connectedRoutes = routes.filter(route => route.stations.includes(selectedStationId));
 
+  // Convert building density to human readable form
+  const getDensityDescription = (density: number | undefined): string => {
+    if (density === undefined) return 'Unknown';
+    
+    if (density < 0.3) return 'Rural';
+    if (density < 0.5) return 'Low Density';
+    if (density < 0.7) return 'Medium Density';
+    if (density < 0.9) return 'High Density';
+    return 'Urban Core';
+  };
+
+  const getDensityEmoji = (density: number | undefined): string => {
+    if (density === undefined) return '❓';
+    
+    if (density < 0.3) return '🌾'; // Rural
+    if (density < 0.5) return '🏘️'; // Suburban
+    if (density < 0.7) return '🏙️'; // Medium density
+    if (density < 0.9) return '🌆'; // High density
+    return '🏢'; // Urban core
+  };
+
   return (
     <div className="selected-station-info">
       <div className="selected-station-header">
@@ -47,6 +68,14 @@ export default function StationStats() {
                 style={{ backgroundColor: route.color }}
               ></div>
             ))}
+          </div>
+        </div>
+        
+        <div className="station-info-row">
+          <span className="station-name">Population Density</span>
+          <div className="density-info">
+            <span className="density-emoji">{getDensityEmoji(selectedStation.buildingDensity)}</span>
+            <span className="density-text">{getDensityDescription(selectedStation.buildingDensity)}</span>
           </div>
         </div>
       </div>

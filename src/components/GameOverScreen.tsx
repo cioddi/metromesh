@@ -12,8 +12,14 @@ export default function GameOverScreen() {
   const { resetMapToDefault } = useMapNavigation();
 
   const handleNewGame = () => {
-    resetGame();
+    // First reset the map viewport, then reset the game
+    // This ensures stations are placed in the new viewport bounds
     resetMapToDefault();
+    
+    // Wait for map animation to complete before resetting game
+    setTimeout(() => {
+      resetGame();
+    }, 1100); // Wait slightly longer than the map flyTo duration (1000ms)
   };
 
   if (!gameOverStats) return null;
