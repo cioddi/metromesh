@@ -61,8 +61,11 @@ export function calculateDistance(pos1: LngLat, pos2: LngLat): number {
   return R * c; // Distance in meters
 }
 
-// Generate random position within London bounds, respecting distance constraints
-export function generateRandomPosition(existingStations: Station[] = []): LngLat {
+// Generate random position within London bounds, respecting distance constraints and avoiding water
+export function generateRandomPosition(
+  existingStations: Station[] = [], 
+  waterCheckFn?: (position: LngLat) => boolean
+): LngLat {
   const MAX_ATTEMPTS = 50;
   const MIN_DISTANCE = 500; // 500 meters
   const MAX_DISTANCE = 1500; // 1500 meters
@@ -73,7 +76,12 @@ export function generateRandomPosition(existingStations: Station[] = []): LngLat
       lat: LONDON_BOUNDS.southwest.lat + Math.random() * BOUNDS_HEIGHT
     };
     
-    // If no existing stations, any position is valid
+    // Check if position is on water (if water check function is provided)
+    if (waterCheckFn && waterCheckFn(candidate)) {
+      continue; // Skip this position, it's on water
+    }
+    
+    // If no existing stations, any non-water position is valid
     if (existingStations.length === 0) {
       return candidate;
     }

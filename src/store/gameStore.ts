@@ -48,7 +48,7 @@ interface GameState {
 }
 
 interface GameActions {
-  addStation: (position?: LngLat) => void
+  addStation: (position?: LngLat, waterCheckFn?: (position: LngLat) => boolean) => void
   addRoute: (stationIds: string[], color: string) => void
   extendRoute: (routeId: string, stationId: string, atEnd: boolean) => void
   updateTrainPositions: () => void
@@ -78,9 +78,9 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   gameStartTime: Date.now(),
 
   // Actions
-  addStation: (position) => {
+  addStation: (position, waterCheckFn) => {
     const state = get()
-    const stationPosition = position || generateRandomPosition(state.stations)
+    const stationPosition = position || generateRandomPosition(state.stations, waterCheckFn)
     
     const newStation: Station = {
       id: `station-${Date.now()}`,
