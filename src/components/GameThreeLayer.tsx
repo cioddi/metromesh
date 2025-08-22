@@ -278,9 +278,7 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
           32   // Segments for smooth circle
         )
         sharedGeometriesRef.current.selectionRingMaterial = new THREE.MeshBasicMaterial({
-          color: 0x4A90E2, // Blue color
-          transparent: true,
-          opacity: 0.9, // 90% opaque
+          color: 0xffae00, // Blue color
           side: THREE.DoubleSide
         })
         
