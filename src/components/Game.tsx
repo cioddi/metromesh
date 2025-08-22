@@ -160,46 +160,33 @@ export default function Game() {
     }
   }, [stations.length]);
 
-  // Add initial stations when game starts, ensuring they are inside the current map view
+  // Add initial stations when game starts - clean and simple approach
   useEffect(() => {
     if (stations.length === 0 && !initialStationsCreated.current && mapHook?.map) {
       initialStationsCreated.current = true;
       const bounds = mapHook.map.getBounds();
-      // Helper to generate a random LngLat at least 100m from left/right/bottom and 500m from the top edge
-      const randomPositionInBounds = () => {
-        const sw = bounds.getSouthWest();
-        const ne = bounds.getNorthEast();
-        // Calculate 100m and 500m in degrees (approximate, varies with latitude)
-        const metersToDegreesLat100 = 100 / 111320; // 1 deg lat ≈ 111.32km
-        const metersToDegreesLat500 = 500 / 111320;
-        const centerLat = (sw.lat + ne.lat) / 2;
-        const metersToDegreesLng = 100 / (111320 * Math.cos(centerLat * Math.PI / 180));
-        return {
-          lng: sw.lng + metersToDegreesLng + Math.random() * ((ne.lng - sw.lng) - 2 * metersToDegreesLng),
-          lat: sw.lat + metersToDegreesLat100 + Math.random() * ((ne.lat - sw.lat) - metersToDegreesLat100 - metersToDegreesLat500)
-        };
+      const mapBounds = {
+        southwest: {
+          lng: bounds.getSouthWest().lng,
+          lat: bounds.getSouthWest().lat
+        },
+        northeast: {
+          lng: bounds.getNorthEast().lng,
+          lat: bounds.getNorthEast().lat
+        }
       };
-      // Add 2 stations inside the current map view, avoiding water
+      
+      console.log('🚀 Creating two initial stations using unified spawning logic...');
+      
+      // Create first initial station (no existing stations, so distance check is skipped)
+      addStation(undefined, isPositionOnWater, getBuildingDensity, true, mapBounds);
+      
+      // Create second initial station (will respect distance constraints to first station)
       setTimeout(() => {
-        let pos;
-        let attempts = 0;
-        do {
-          pos = randomPositionInBounds();
-          attempts++;
-        } while (isPositionOnWater(pos) && attempts < 10);
-        addStation(pos, isPositionOnWater, getBuildingDensity);
-      }, 0);
-      setTimeout(() => {
-        let pos;
-        let attempts = 0;
-        do {
-          pos = randomPositionInBounds();
-          attempts++;
-        } while (isPositionOnWater(pos) && attempts < 10);
-        addStation(pos, isPositionOnWater, getBuildingDensity);
-      }, 1000);
+        addStation(undefined, isPositionOnWater, getBuildingDensity, true, mapBounds);
+      }, 100); // Small delay to ensure first station is added to store first
     }
-  }, [stations.length, addStation, mapHook?.map, isPositionOnWater]);
+  }, [stations.length, addStation, mapHook?.map, isPositionOnWater, getBuildingDensity]);
 
   useEffect(() => {
     if (!isPlaying) return;

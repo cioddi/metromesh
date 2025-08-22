@@ -50,7 +50,7 @@ interface GameState {
 }
 
 interface GameActions {
-  addStation: (position?: LngLat, waterCheckFn?: (position: LngLat) => boolean, buildingDensityFn?: (position: LngLat) => number) => void
+  addStation: (position?: LngLat, waterCheckFn?: (position: LngLat) => boolean, buildingDensityFn?: (position: LngLat) => number, isInitialStation?: boolean, bounds?: { southwest: LngLat; northeast: LngLat }) => void
   addRoute: (stationIds: string[], color: string) => void
   extendRoute: (routeId: string, stationId: string, atEnd: boolean) => void
   updateTrainPositions: () => void
@@ -81,9 +81,9 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   lastStationSpawnTime: Date.now(),
 
   // Actions
-  addStation: (position, waterCheckFn, buildingDensityFn) => {
+  addStation: (position, waterCheckFn, buildingDensityFn, isInitialStation = false, bounds) => {
     const state = get()
-    const stationPosition = position || generateRandomPosition(state.stations, waterCheckFn)
+    const stationPosition = position || generateRandomPosition(state.stations, waterCheckFn, isInitialStation, bounds)
     
     // Calculate building density if function provided
     let buildingDensity = 0.5 // Default medium density

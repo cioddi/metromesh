@@ -31,6 +31,10 @@ export const GAME_CONFIG = {
   gameLoopInterval: 100, // milliseconds
   minStationSpawnDelay: 15000, // Minimum time (ms) between station spawns - prevents too frequent spawning
   maxStationSpawnDelay: 20000, // Maximum time (ms) between station spawns - guarantees station every 20s
+  // Station distance constraints
+  minStationDistance: 500, // Minimum distance between stations in meters
+  maxInitialStationDistance: 1500, // Maximum distance for initial stations in meters
+  maxRegularStationDistance: 1500, // Maximum distance for regular stations in meters
 } as const;
 
 // Performance settings
@@ -64,19 +68,28 @@ export function calculateDistance(pos1: LngLat, pos2: LngLat): number {
   return R * c; // Distance in meters
 }
 
-// Generate random position within London bounds, respecting distance constraints and avoiding water
+// Generate random position within bounds, respecting distance constraints and avoiding water
 export function generateRandomPosition(
   existingStations: Station[] = [], 
-  waterCheckFn?: (position: LngLat) => boolean
+  waterCheckFn?: (position: LngLat) => boolean,
+  isInitialStation: boolean = false,
+  bounds?: { southwest: LngLat; northeast: LngLat }
 ): LngLat {
   const MAX_ATTEMPTS = 50;
-  const MIN_DISTANCE = 500; // 500 meters
-  const MAX_DISTANCE = 1500; // 1500 meters
+  const MIN_DISTANCE = GAME_CONFIG.minStationDistance;
+  const MAX_DISTANCE = isInitialStation 
+    ? GAME_CONFIG.maxInitialStationDistance 
+    : GAME_CONFIG.maxRegularStationDistance;
+  
+  // Use provided bounds or default to London bounds
+  const useBounds = bounds || LONDON_BOUNDS;
+  const boundsWidth = useBounds.northeast.lng - useBounds.southwest.lng;
+  const boundsHeight = useBounds.northeast.lat - useBounds.southwest.lat;
   
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const candidate: LngLat = {
-      lng: LONDON_BOUNDS.southwest.lng + Math.random() * BOUNDS_WIDTH,
-      lat: LONDON_BOUNDS.southwest.lat + Math.random() * BOUNDS_HEIGHT
+      lng: useBounds.southwest.lng + Math.random() * boundsWidth,
+      lat: useBounds.southwest.lat + Math.random() * boundsHeight
     };
     
     // Check if position is on water (if water check function is provided)
@@ -86,6 +99,7 @@ export function generateRandomPosition(
     
     // If no existing stations, any non-water position is valid
     if (existingStations.length === 0) {
+      console.log(`✅ Generated ${isInitialStation ? 'initial' : 'regular'} station (first station, no distance check)`);
       return candidate;
     }
     
@@ -108,14 +122,17 @@ export function generateRandomPosition(
     
     // Valid position: not too close to any station and within range of at least one
     if (!tooClose && !tooFar) {
+      const nearestDistance = Math.min(...existingStations.map(s => calculateDistance(candidate, s.position)));
+      console.log(`✅ Generated ${isInitialStation ? 'initial' : 'regular'} station ${nearestDistance.toFixed(0)}m from nearest (min: ${MIN_DISTANCE}m, max: ${MAX_DISTANCE}m)`);
       return candidate;
     }
   }
   
   // Fallback: return a random position (better than no station)
+  console.log(`⚠️ Fallback positioning for ${isInitialStation ? 'initial' : 'regular'} station after ${MAX_ATTEMPTS} attempts`);
   return {
-    lng: LONDON_BOUNDS.southwest.lng + Math.random() * BOUNDS_WIDTH,
-    lat: LONDON_BOUNDS.southwest.lat + Math.random() * BOUNDS_HEIGHT
+    lng: useBounds.southwest.lng + Math.random() * boundsWidth,
+    lat: useBounds.southwest.lat + Math.random() * boundsHeight
   };
 }
 
