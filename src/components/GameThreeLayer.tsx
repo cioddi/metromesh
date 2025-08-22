@@ -534,7 +534,6 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
       // 🔥 STUNNING MATERIAL-BASED DISTRESS EFFECTS 🔥
       if (isDistressed) {
         const time = Date.now() * 0.001;
-        const distressSeverity = Math.min((station.passengerCount - 15) / 10, 1);
         
         // ✨ TRANSFORM THE STATION WITH ADVANCED MATERIALS ✨
         const stationMesh = stationObj.object3D.children[1] as THREE.Mesh;

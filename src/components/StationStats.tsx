@@ -1,7 +1,7 @@
 import { useGameStore } from '../store/gameStore';
 
 export default function StationStats() {
-  const { selectedStationId, stations, routes, trains, selectStation } = useGameStore();
+  const { selectedStationId, stations, routes, selectStation } = useGameStore();
 
   if (!selectedStationId) {
     return null; // Don't render anything when no station is selected
