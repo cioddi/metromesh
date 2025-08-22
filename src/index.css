@@ -392,11 +392,9 @@ body {
 
 .station-item.clickable:hover {
   background: #e9ecef;
-  transform: translateX(2px);
 }
 
 .station-item.clickable:active {
-  transform: translateX(1px);
   background: #dee2e6;
 }
 
@@ -487,9 +485,6 @@ body {
   border-radius: 2px;
 }
 
-.stations-list::-webkit-scrollbar-thumb:hover {
-  background: #999;
-}
 
 /* Station Stats Section */
 .station-stats {
