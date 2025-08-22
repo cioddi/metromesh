@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { useMap } from '@mapcomponents/react-maplibre';
 import MapComponent from "./MapComponent";
 import GameThreeLayer from "./GameThreeLayer";
@@ -6,10 +6,11 @@ import GameUI from "./GameUI";
 import StationDragHandler from "./StationDragHandler";
 import GameOverScreen from "./GameOverScreen";
 import StationStats from "./StationStats";
+import RouteSelectionPopup from "./RouteSelectionPopup";
 import { useGameStore, ROUTE_COLORS } from "../store/gameStore";
 import { useMapNavigation } from "../hooks/useMapNavigation";
 import { GAME_CONFIG } from "../config/gameConfig";
-import type { LngLat } from "../types";
+import type { LngLat, Route } from "../types";
 
 export default function Game() {
   const {
@@ -29,6 +30,25 @@ export default function Game() {
     addPassengerToStation,
     selectStation,
   } = useGameStore();
+
+  // Route selection popup state
+  const [routeSelectionPopup, setRouteSelectionPopup] = useState<{
+    isVisible: boolean
+    routes: Route[]
+    position: { x: number; y: number }
+    pendingConnection: {
+      startStationId: string
+      endStationId: string
+      isExtension?: boolean
+      routeId?: string
+      atEnd?: boolean
+    } | null
+  }>({
+    isVisible: false,
+    routes: [],
+    position: { x: 0, y: 0 },
+    pendingConnection: null
+  })
 
   const { centerAndZoomToStation } = useMapNavigation();
   const mapHook = useMap();
@@ -92,7 +112,6 @@ export default function Game() {
       
       // Since we're querying specifically the 'building' layer, all features are buildings
       const buildingCount = features.length;
-      const totalFeatures = features.length;
       
       // Debug: Log building count occasionally
       if (features.length > 0 && Math.random() < 0.05) { // Log 5% of the time
@@ -233,9 +252,85 @@ export default function Game() {
   };
 
   const handleDragCreateRoute = (startStationId: string, endStationId: string) => {
+    // Check if this connection already exists on any route
+    const connectionExists = routes.some(route => {
+      const stations = route.stations;
+      for (let i = 0; i < stations.length - 1; i++) {
+        const currentStation = stations[i];
+        const nextStation = stations[i + 1];
+        // Check both directions
+        if ((currentStation === startStationId && nextStation === endStationId) ||
+            (currentStation === endStationId && nextStation === startStationId)) {
+          return true;
+        }
+      }
+      return false;
+    });
+
+    if (connectionExists) {
+      console.log('Connection already exists between these stations');
+      return; // Don't create duplicate connection
+    }
+
     const color = ROUTE_COLORS[routes.length % ROUTE_COLORS.length];
     addRoute([startStationId, endStationId], color);
   };
+
+  // Handler for multi-route selection scenarios
+  const handleMultiRouteConnection = (
+    startStationId: string, 
+    endStationId: string, 
+    availableRoutes: Route[], 
+    screenPosition: { x: number; y: number },
+    isExtension?: boolean,
+    routeId?: string,
+    atEnd?: boolean
+  ) => {
+    setRouteSelectionPopup({
+      isVisible: true,
+      routes: availableRoutes,
+      position: screenPosition,
+      pendingConnection: {
+        startStationId,
+        endStationId,
+        isExtension,
+        routeId,
+        atEnd
+      }
+    })
+  }
+
+  const handleRouteSelection = (selectedRouteId: string) => {
+    const pending = routeSelectionPopup.pendingConnection
+    if (!pending) return
+
+    if (pending.isExtension) {
+      // Extend the selected route
+      extendRoute(selectedRouteId, pending.endStationId, pending.atEnd || false)
+    } else {
+      // This case shouldn't happen as we're replacing new route creation logic,
+      // but handle it gracefully
+      const color = ROUTE_COLORS[routes.length % ROUTE_COLORS.length];
+      addRoute([pending.startStationId, pending.endStationId], color);
+    }
+
+    // Close popup
+    setRouteSelectionPopup({
+      isVisible: false,
+      routes: [],
+      position: { x: 0, y: 0 },
+      pendingConnection: null
+    })
+  }
+
+  const handlePopupCancel = () => {
+    setRouteSelectionPopup({
+      isVisible: false,
+      routes: [],
+      position: { x: 0, y: 0 },
+      pendingConnection: null
+    })
+  }
 
   const handleStationSelectFromList = (stationId: string) => {
     // Select the station
@@ -275,6 +370,7 @@ export default function Game() {
         routes={routes}
         onCreateRoute={handleDragCreateRoute}
         onExtendRoute={extendRoute}
+        onMultiRouteConnection={handleMultiRouteConnection}
       />
 
       <GameUI
@@ -282,6 +378,14 @@ export default function Game() {
         onReset={resetGame}
         onCreateRoute={handleCreateRoute}
         onStationSelectFromList={handleStationSelectFromList}
+      />
+
+      <RouteSelectionPopup
+        isVisible={routeSelectionPopup.isVisible}
+        routes={routeSelectionPopup.routes}
+        position={routeSelectionPopup.position}
+        onRouteSelect={handleRouteSelection}
+        onCancel={handlePopupCancel}
       />
 
       <StationStats />

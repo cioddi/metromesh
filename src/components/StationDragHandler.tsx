@@ -17,9 +17,18 @@ interface StationDragHandlerProps {
   routes: Route[];
   onCreateRoute: (startStationId: string, endStationId: string) => void;
   onExtendRoute: (routeId: string, stationId: string, atEnd: boolean) => void;
+  onMultiRouteConnection?: (
+    startStationId: string, 
+    endStationId: string, 
+    availableRoutes: Route[], 
+    screenPosition: { x: number; y: number },
+    isExtension?: boolean,
+    routeId?: string,
+    atEnd?: boolean
+  ) => void;
 }
 
-function StationDragHandler({ stations, routes, onCreateRoute, onExtendRoute }: StationDragHandlerProps) {
+function StationDragHandler({ stations, routes, onCreateRoute, onExtendRoute, onMultiRouteConnection }: StationDragHandlerProps) {
   const mapHook = useMap();
   const [dragState, setDragState] = useState<DragState>({
     isDragging: false,
@@ -167,11 +176,59 @@ function StationDragHandler({ stations, routes, onCreateRoute, onExtendRoute }: 
       const currentDragState = dragStateRef.current;
       if (currentDragState.isDragging && currentDragState.isValidTarget && currentDragState.targetStation) {
         if (currentDragState.fromRouteEnd) {
-          // Extend existing route
-          onExtendRoute(currentDragState.fromRouteEnd.routeId, currentDragState.targetStation, currentDragState.fromRouteEnd.isEnd);
+          // Extending a route - check if start station is a terminal for multiple routes
+          const startStationRoutes = routes.filter(route => {
+            const stations = route.stations;
+            return stations.length > 0 && 
+                   (stations[0] === currentDragState.startStation || 
+                    stations[stations.length - 1] === currentDragState.startStation);
+          });
+
+          if (startStationRoutes.length > 1 && onMultiRouteConnection) {
+            // Multiple routes at this terminal - show selection popup
+            const rect = canvas.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            
+            onMultiRouteConnection(
+              currentDragState.startStation!,
+              currentDragState.targetStation,
+              startStationRoutes,
+              { x: centerX, y: centerY },
+              true, // isExtension
+              currentDragState.fromRouteEnd.routeId,
+              currentDragState.fromRouteEnd.isEnd
+            );
+          } else {
+            // Single route or no multi-route handler - proceed normally
+            onExtendRoute(currentDragState.fromRouteEnd.routeId, currentDragState.targetStation, currentDragState.fromRouteEnd.isEnd);
+          }
         } else {
-          // Create new route
-          onCreateRoute(currentDragState.startStation!, currentDragState.targetStation);
+          // Creating new route - check if start station is a terminal for multiple routes
+          const startStationRoutes = routes.filter(route => {
+            const stations = route.stations;
+            return stations.length > 0 && 
+                   (stations[0] === currentDragState.startStation || 
+                    stations[stations.length - 1] === currentDragState.startStation);
+          });
+
+          if (startStationRoutes.length > 0 && onMultiRouteConnection) {
+            // Station is terminal of existing routes - show selection popup to extend instead of creating new
+            const rect = canvas.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            
+            onMultiRouteConnection(
+              currentDragState.startStation!,
+              currentDragState.targetStation,
+              startStationRoutes,
+              { x: centerX, y: centerY },
+              true // isExtension
+            );
+          } else {
+            // No existing routes at start station - create new route
+            onCreateRoute(currentDragState.startStation!, currentDragState.targetStation);
+          }
         }
       }
 
@@ -232,7 +289,7 @@ function StationDragHandler({ stations, routes, onCreateRoute, onExtendRoute }: 
       document.removeEventListener('mouseup', handleMouseUp);
       document.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [mapHook?.map, stations, routes, onCreateRoute, onExtendRoute]);
+  }, [mapHook?.map, stations, routes, onCreateRoute, onExtendRoute, onMultiRouteConnection]);
 
   // Render drag preview - separate effect with minimal dependencies
   useEffect(() => {

@@ -179,6 +179,7 @@ const MlThreeJsLayer = ({
       id: layerId,
       type: 'custom' as const,
       renderingMode: '3d' as const,
+      resizeHandler: null as (() => void) | null,
       
       onAdd: function(mapInstance: any, gl: WebGLRenderingContext | WebGL2RenderingContext) { // eslint-disable-line @typescript-eslint/no-explicit-any
         const renderer = new THREE.WebGLRenderer({

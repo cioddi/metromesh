@@ -139,6 +139,27 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   extendRoute: (routeId, newStationId, atEnd) => {
     const state = get()
     
+    const targetRoute = state.routes.find(r => r.id === routeId)
+    if (!targetRoute) return
+
+    // Check if this station is already connected to the endpoint we're extending from
+    const endpointStationId = atEnd 
+      ? targetRoute.stations[targetRoute.stations.length - 1]
+      : targetRoute.stations[0]
+
+    // Check if this connection already exists on the same route
+    const connectionExists = targetRoute.stations.some((stationId, index) => {
+      if (index === targetRoute.stations.length - 1) return false // Skip last station
+      const nextStationId = targetRoute.stations[index + 1]
+      return (stationId === endpointStationId && nextStationId === newStationId) ||
+             (stationId === newStationId && nextStationId === endpointStationId)
+    })
+
+    if (connectionExists) {
+      console.log('Connection already exists on this route')
+      return // Don't extend with duplicate connection
+    }
+
     set({
       routes: state.routes.map(route => {
         if (route.id !== routeId) return route
