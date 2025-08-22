@@ -6,57 +6,92 @@ import type { LngLat, Route, Train, Passenger } from '../types'
 import { createStationObject } from '../utils/threeObjectFactories'
 import { PERFORMANCE_CONFIG } from '../config/gameConfig'
 
-// Helper function to create metro-style route coordinates
+// Helper function to create metro-style route coordinates using Web Mercator for true visual alignment
 function createMetroRouteCoordinates(start: LngLat, target: LngLat): number[][] {
-  const dx = target.lng - start.lng;
-  const dy = target.lat - start.lat;
+  // Convert to Web Mercator coordinates for true visual calculations
+  const startMerc = MercatorCoordinate.fromLngLat([start.lng, start.lat], 0);
+  const targetMerc = MercatorCoordinate.fromLngLat([target.lng, target.lat], 0);
+  
+  const dx_m = targetMerc.x - startMerc.x;
+  const dy_m = targetMerc.y - startMerc.y;
   
   // Start with the starting point
   const coordinates: number[][] = [[start.lng, start.lat]];
   
+  // Check for alignment using meters-based threshold (~10m equivalent in Mercator space)
+  const startMeterUnit = startMerc.meterInMercatorCoordinateUnits();
+  const alignmentThreshold = 10 * startMeterUnit; // ~10 meters in Mercator units
+  
   // If already aligned horizontally or vertically, go straight
-  if (Math.abs(dx) < 0.0001) {
+  if (Math.abs(dx_m) < alignmentThreshold) {
     coordinates.push([start.lng, target.lat]);
     return coordinates;
   }
-  if (Math.abs(dy) < 0.0001) {
+  if (Math.abs(dy_m) < alignmentThreshold) {
     coordinates.push([target.lng, start.lat]);
     return coordinates;
   }
   
-  // Calculate which direction to go diagonally first
-  const absDx = Math.abs(dx);
-  const absDy = Math.abs(dy);
+  // Calculate which direction to go diagonally first in Mercator space
+  const absDx_m = Math.abs(dx_m);
+  const absDy_m = Math.abs(dy_m);
   
-  // Determine the 45-degree direction
-  const diagonalDx = dx > 0 ? 1 : -1;
-  const diagonalDy = dy > 0 ? 1 : -1;
+  // Determine the 45-degree direction in Mercator space
+  const diagonalDistance_m = Math.min(absDx_m, absDy_m);
+  const signX = dx_m > 0 ? 1 : -1;
+  const signY = dy_m > 0 ? 1 : -1;
   
-  // Go 45 degrees until we align with target on one axis
-  const diagonalDistance = Math.min(absDx, absDy);
+  // Calculate the corner point in Mercator space for true 45-degree alignment
+  let cornerMerc: MercatorCoordinate;
   
-  // Calculate the corner point with perfect alignment
-  let cornerLng: number;
-  let cornerLat: number;
-  
-  if (absDx < absDy) {
-    // Diagonal stops when we reach target longitude - ensure perfect vertical alignment for final segment
-    cornerLng = target.lng;
-    cornerLat = start.lat + diagonalDy * diagonalDistance;
+  if (absDx_m < absDy_m) {
+    // Diagonal stops when we reach target x - ensure perfect vertical alignment for final segment
+    cornerMerc = new MercatorCoordinate(
+      targetMerc.x, 
+      startMerc.y + signY * diagonalDistance_m, 
+      0
+    );
   } else {
-    // Diagonal stops when we reach target latitude - ensure perfect horizontal alignment for final segment
-    cornerLng = start.lng + diagonalDx * diagonalDistance;
+    // Diagonal stops when we reach target y - ensure perfect horizontal alignment for final segment  
+    cornerMerc = new MercatorCoordinate(
+      startMerc.x + signX * diagonalDistance_m, 
+      targetMerc.y, 
+      0
+    );
+  }
+  
+  // Convert corner back to lng-lat
+  const cornerLngLat = cornerMerc.toLngLat();
+  let cornerLng = cornerLngLat.lng;
+  let cornerLat = cornerLngLat.lat;
+  
+  // Ensure perfect alignment for final segments
+  if (absDx_m < absDy_m) {
+    // Final segment should be perfectly vertical - corner must have target's longitude
+    cornerLng = target.lng;
+  } else {
+    // Final segment should be perfectly horizontal - corner must have target's latitude  
     cornerLat = target.lat;
   }
   
-  // Add the corner point
-  coordinates.push([cornerLng, cornerLat]);
+  // Check for duplicates before adding corner point
+  const lastCoord = coordinates[coordinates.length - 1];
+  const cornerThreshold = 0.000001; // Very small threshold for lng-lat comparison
+  if (Math.abs(cornerLng - lastCoord[0]) > cornerThreshold || 
+      Math.abs(cornerLat - lastCoord[1]) > cornerThreshold) {
+    coordinates.push([cornerLng, cornerLat]);
+  }
   
-  // Add the final target point
-  coordinates.push([target.lng, target.lat]);
+  // Check for duplicates before adding target point
+  const currentLastCoord = coordinates[coordinates.length - 1];
+  if (Math.abs(target.lng - currentLastCoord[0]) > cornerThreshold || 
+      Math.abs(target.lat - currentLastCoord[1]) > cornerThreshold) {
+    coordinates.push([target.lng, target.lat]);
+  }
   
   return coordinates;
 }
+
 
 // Helper function to get position along metro route
 function getTrainPositionOnMetroRoute(routeStations: Array<{ id: string; position: LngLat; color: string }>, trainPosition: number): LngLat {
@@ -649,14 +684,17 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
     })
 
     const getDistanceInMeters = (pos1: LngLat, pos2: LngLat): number => {
-      const dlng = pos2.lng - pos1.lng
-      const dlat = pos2.lat - pos1.lat
+      // Use Web Mercator for accurate distance calculation
+      const merc1 = MercatorCoordinate.fromLngLat([pos1.lng, pos1.lat], 0)
+      const merc2 = MercatorCoordinate.fromLngLat([pos2.lng, pos2.lat], 0)
       
-      // Rough conversion to meters (assuming roughly 111km per degree)
-      const dxMeters = dlng * 111000 * Math.cos(pos1.lat * Math.PI / 180)
-      const dyMeters = dlat * 111000
+      const dx_m = merc2.x - merc1.x
+      const dy_m = merc2.y - merc1.y
+      const distance_m = Math.hypot(dx_m, dy_m)
       
-      return Math.sqrt(dxMeters * dxMeters + dyMeters * dyMeters)
+      // Convert from Mercator units to meters
+      const meterUnit = merc1.meterInMercatorCoordinateUnits()
+      return distance_m / meterUnit
     }
 
     // Advanced Geometric Corridor Detection System for Sophisticated Parallel Route Visualization
@@ -710,55 +748,74 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
         const routeMicros: MicroSegment[] = []
         let totalRouteLength = 0
         
-        // Calculate total route length first
+        // Calculate total route length using schematic paths
         for (let i = 0; i < routeStations.length - 1; i++) {
           const start = routeStations[i]!
           const end = routeStations[i + 1]!
-          const segLength = getDistanceInMeters(start.position, end.position)
-          totalRouteLength += segLength
+          const schematicCoords = createMetroRouteCoordinates(start.position, end.position)
+          
+          // Sum lengths of all schematic sub-segments
+          for (let j = 0; j < schematicCoords.length - 1; j++) {
+            const subStart = { lng: schematicCoords[j][0], lat: schematicCoords[j][1] }
+            const subEnd = { lng: schematicCoords[j + 1][0], lat: schematicCoords[j + 1][1] }
+            const subSegLength = getDistanceInMeters(subStart, subEnd)
+            totalRouteLength += subSegLength
+          }
         }
 
         let currentRouteDistance = 0
 
-        // Sample each segment of the route
+        // Sample each segment of the route using schematic paths
         for (let segIdx = 0; segIdx < routeStations.length - 1; segIdx++) {
           const start = routeStations[segIdx]!
           const end = routeStations[segIdx + 1]!
-          const segLength = getDistanceInMeters(start.position, end.position)
           
-          if (segLength < 1) continue // Skip very short segments
+          // Get schematic coordinates for this segment
+          const schematicCoords = createMetroRouteCoordinates(start.position, end.position)
           
-          const numSamples = Math.max(2, Math.ceil(segLength / SAMPLING_DISTANCE_METERS))
-          
-          for (let sampleIdx = 0; sampleIdx < numSamples - 1; sampleIdx++) {
-            const t1 = sampleIdx / (numSamples - 1)
-            const t2 = (sampleIdx + 1) / (numSamples - 1)
+          // Sample along each sub-segment of the schematic path
+          for (let subSegIdx = 0; subSegIdx < schematicCoords.length - 1; subSegIdx++) {
+            const subStart = { lng: schematicCoords[subSegIdx][0], lat: schematicCoords[subSegIdx][1] }
+            const subEnd = { lng: schematicCoords[subSegIdx + 1][0], lat: schematicCoords[subSegIdx + 1][1] }
+            const subSegLength = getDistanceInMeters(subStart, subEnd)
             
-            const startPos = interpolatePosition(start.position, end.position, t1)
-            const endPos = interpolatePosition(start.position, end.position, t2)
-            const centerPos = interpolatePosition(startPos, endPos, 0.5)
+            if (subSegLength < 1) continue // Skip very short sub-segments
             
-            const dx = endPos.lng - startPos.lng
-            const dy = endPos.lat - startPos.lat
-            const len = Math.hypot(dx, dy)
+            const numSamples = Math.max(2, Math.ceil(subSegLength / SAMPLING_DISTANCE_METERS))
             
-            const microSeg: MicroSegment = {
-              id: `micro-${microSegmentCounter++}`,
-              routeId: route.id,
-              startPos,
-              endPos,
-              centerPos,
-              direction: len > 0 ? { x: dx / len, y: dy / len } : { x: 1, y: 0 },
-              length: len,
-              routeT: (currentRouteDistance + (sampleIdx / (numSamples - 1)) * segLength) / totalRouteLength,
-              segmentIndex: segIdx
+            for (let sampleIdx = 0; sampleIdx < numSamples - 1; sampleIdx++) {
+              const t1 = sampleIdx / (numSamples - 1)
+              const t2 = (sampleIdx + 1) / (numSamples - 1)
+              
+              const startPos = interpolatePosition(subStart, subEnd, t1)
+              const endPos = interpolatePosition(subStart, subEnd, t2)
+              const centerPos = interpolatePosition(startPos, endPos, 0.5)
+              
+              // Convert to Mercator for true visual direction calculation
+              const startMerc = MercatorCoordinate.fromLngLat([startPos.lng, startPos.lat], 0)
+              const endMerc = MercatorCoordinate.fromLngLat([endPos.lng, endPos.lat], 0)
+              const dx_m = endMerc.x - startMerc.x
+              const dy_m = endMerc.y - startMerc.y
+              const len_m = Math.hypot(dx_m, dy_m)
+              
+              const microSeg: MicroSegment = {
+                id: `micro-${microSegmentCounter++}`,
+                routeId: route.id,
+                startPos,
+                endPos,
+                centerPos,
+                direction: len_m > 0 ? { x: dx_m / len_m, y: dy_m / len_m } : { x: 1, y: 0 },
+                length: subSegLength,
+                routeT: (currentRouteDistance + (sampleIdx / (numSamples - 1)) * subSegLength) / totalRouteLength,
+                segmentIndex: segIdx
+              }
+              
+              routeMicros.push(microSeg)
+              allMicroSegments.push(microSeg)
             }
             
-            routeMicros.push(microSeg)
-            allMicroSegments.push(microSeg)
+            currentRouteDistance += subSegLength
           }
-          
-          currentRouteDistance += segLength
         }
         
         routeMicroSegments.set(route.id, routeMicros)
@@ -819,11 +876,13 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
             if (distance > PROXIMITY_THRESHOLD_METERS) continue
             
             // Check parallelism - compute angle between direction vectors
+            // Use absolute dot product to treat anti-parallel (180°) as parallel
             const dotProduct = microA.direction.x * microB.direction.x + microA.direction.y * microB.direction.y
             const angleDiff = Math.acos(Math.min(1, Math.max(-1, Math.abs(dotProduct))))
             
-            if (angleDiff < PARALLEL_ANGLE_THRESHOLD) {
-              const similarity = 1 - (angleDiff / PARALLEL_ANGLE_THRESHOLD) // 1 = perfectly parallel, 0 = at threshold
+            // Only group routes that are truly parallel (not opposing directions)
+            if (angleDiff < PARALLEL_ANGLE_THRESHOLD && Math.abs(dotProduct) > 0.7) {
+              const similarity = Math.abs(dotProduct) // Use absolute dot product for similarity
               parallelPairs.push({ a: microA, b: microB, distance, similarity })
             }
           }
@@ -887,14 +946,27 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
             averageDirection: { x: 0, y: 0 } // Will be computed
           }
 
-          // Compute average direction
-          let avgDx = 0, avgDy = 0
+          // Compute weighted average direction (by length)
+          let avgDx = 0, avgDy = 0, totalWeight = 0
           for (const micro of micros) {
-            avgDx += micro.direction.x
-            avgDy += micro.direction.y
+            const weight = micro.length
+            avgDx += micro.direction.x * weight
+            avgDy += micro.direction.y * weight
+            totalWeight += weight
           }
-          const len = Math.hypot(avgDx, avgDy)
+          const len = totalWeight > 0 ? Math.hypot(avgDx, avgDy) : 0
           corridor.averageDirection = len > 0 ? { x: avgDx / len, y: avgDy / len } : { x: 1, y: 0 }
+          
+          // Sort micro-segments along the corridor direction for better reference line
+          const tempOrigin = { x: 0, y: 0 } // Arbitrary origin for projection
+          micros.sort((a, b) => {
+            const projA = (a.centerPos.lng - tempOrigin.x) * corridor.averageDirection.x + 
+                         (a.centerPos.lat - tempOrigin.y) * corridor.averageDirection.y
+            const projB = (b.centerPos.lng - tempOrigin.x) * corridor.averageDirection.x + 
+                         (b.centerPos.lat - tempOrigin.y) * corridor.averageDirection.y
+            return projA - projB
+          })
+          corridor.microSegments = micros
 
           corridors.push(corridor)
 
@@ -945,14 +1017,221 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
         // Sort by score -> band order left(-) to right(+)
         scored.sort((u, v) => u.score - v.score)
         
-        // Assign band indices
+        // Try different orderings and evaluate them based on crossovers AND geometric constraints
+        const bestOrdering = findBestRouteOrdering(scored, routes, ST, corridor)
+        
+        // Assign band indices using the best ordering
         if (!routeCorridorBands.has(corridor.id)) {
           routeCorridorBands.set(corridor.id, new Map())
         }
         
-        scored.forEach((item, index) => {
+        bestOrdering.forEach((item, index) => {
           routeCorridorBands.get(corridor.id)!.set(item.routeId, index)
         })
+      }
+
+      // Advanced function to find the best route ordering considering crossovers AND geometric constraints
+      function findBestRouteOrdering(
+        scored: { routeId: string; score: number }[],
+        allRoutes: Route[],
+        stationMap: Map<string, { id: string; position: LngLat; color: string; passengerCount: number }>,
+        corridor: Corridor
+      ): { routeId: string; score: number }[] {
+        if (scored.length <= 1) return scored
+        
+        // For small numbers of routes, we can test all permutations
+        // For larger numbers, we'll test key variations
+        const orderings: { routeId: string; score: number }[][] = []
+        
+        if (scored.length <= 3) {
+          // Test all permutations for small sets
+          orderings.push(...getAllPermutations(scored))
+        } else {
+          // For larger sets, test key variations
+          orderings.push([...scored]) // Original
+          orderings.push([...scored].reverse()) // Reversed
+          
+          // Test swapping adjacent pairs
+          for (let i = 0; i < scored.length - 1; i++) {
+            const swapped = [...scored]
+            ;[swapped[i], swapped[i + 1]] = [swapped[i + 1], swapped[i]]
+            orderings.push(swapped)
+          }
+        }
+        
+        let bestOrdering = scored
+        let bestScore = Infinity
+        
+        for (const ordering of orderings) {
+          const score = evaluateOrdering(ordering, allRoutes, stationMap, corridor)
+          if (score < bestScore) {
+            bestScore = score
+            bestOrdering = ordering
+          }
+        }
+        
+        return bestOrdering
+      }
+
+      // Helper function to get all permutations of a small array
+      function getAllPermutations<T>(arr: T[]): T[][] {
+        if (arr.length <= 1) return [arr]
+        
+        const result: T[][] = []
+        for (let i = 0; i < arr.length; i++) {
+          const rest = [...arr.slice(0, i), ...arr.slice(i + 1)]
+          const restPerms = getAllPermutations(rest)
+          for (const perm of restPerms) {
+            result.push([arr[i], ...perm])
+          }
+        }
+        return result
+      }
+
+      // Comprehensive evaluation function that considers crossovers AND geometric constraints
+      function evaluateOrdering(
+        ordering: { routeId: string; score: number }[],
+        allRoutes: Route[],
+        stationMap: Map<string, { id: string; position: LngLat; color: string; passengerCount: number }>,
+        corridor: Corridor
+      ): number {
+        let penalty = 0
+        
+        // 1. Check for crossovers (high penalty)
+        penalty += detectCrossovers(ordering, allRoutes, stationMap, corridor) * 100
+        
+        // 2. Check for geometric constraint violations (very high penalty)
+        penalty += checkGeometricConstraints(ordering, allRoutes, stationMap) * 1000
+        
+        // 3. Prefer orderings that maintain original score-based relationships (low penalty)
+        penalty += calculateScoreDisorder(ordering) * 1
+        
+        return penalty
+      }
+
+      // Detect actual crossovers using a more robust method
+      function detectCrossovers(
+        ordering: { routeId: string; score: number }[],
+        allRoutes: Route[],
+        stationMap: Map<string, { id: string; position: LngLat; color: string; passengerCount: number }>,
+        corridor: Corridor
+      ): number {
+        let crossoverCount = 0
+        
+        // Simple crossover check - compare relative positions at route endpoints
+        for (let i = 0; i < ordering.length - 1; i++) {
+          for (let j = i + 1; j < ordering.length; j++) {
+            const route1 = allRoutes.find(r => r.id === ordering[i].routeId)
+            const route2 = allRoutes.find(r => r.id === ordering[j].routeId)
+            
+            if (!route1 || !route2) continue
+            
+            const stations1 = route1.stations.map(id => stationMap.get(id)).filter(Boolean)
+            const stations2 = route2.stations.map(id => stationMap.get(id)).filter(Boolean)
+            
+            if (stations1.length < 2 || stations2.length < 2) continue
+            
+            // Compare relative positions at start and end
+            const start1 = stations1[0]!.position
+            const end1 = stations1[stations1.length - 1]!.position
+            const start2 = stations2[0]!.position
+            const end2 = stations2[stations2.length - 1]!.position
+            
+            const startRelPos = getRelativePosition(start1, start2, corridor.averageDirection)
+            const endRelPos = getRelativePosition(end1, end2, corridor.averageDirection)
+            
+            // If relative positions are inverted between start and end, there's a crossover
+            if (startRelPos * endRelPos < 0) {
+              crossoverCount++
+            }
+          }
+        }
+        
+        return crossoverCount
+      }
+
+      // Check if the ordering would violate geometric constraints (straight lines, 45° angles)
+      function checkGeometricConstraints(
+        ordering: { routeId: string; score: number }[],
+        allRoutes: Route[],
+        stationMap: Map<string, { id: string; position: LngLat; color: string; passengerCount: number }>
+      ): number {
+        let violations = 0
+        
+        // For each route, check if applying the offset would create non-standard angles
+        for (let i = 0; i < ordering.length; i++) {
+          const route = allRoutes.find(r => r.id === ordering[i].routeId)
+          if (!route) continue
+          
+          const stations = route.stations.map(id => stationMap.get(id)).filter(Boolean)
+          if (stations.length < 2) continue
+          
+          // Check each segment of the route maintains valid metro angles
+          for (let segIdx = 0; segIdx < stations.length - 1; segIdx++) {
+            const start = stations[segIdx]!.position
+            const end = stations[segIdx + 1]!.position
+            
+            // Get schematic coordinates and validate each sub-segment
+            const coords = createMetroRouteCoordinates(start, end)
+            
+            for (let j = 0; j < coords.length - 1; j++) {
+              const segStart = { lng: coords[j][0], lat: coords[j][1] }
+              const segEnd = { lng: coords[j + 1][0], lat: coords[j + 1][1] }
+              
+              if (!isValidMetroSegment(segStart, segEnd)) {
+                violations++
+              }
+            }
+          }
+        }
+        
+        return violations
+      }
+
+      // Helper function to check if a segment maintains valid metro angles
+      function isValidMetroSegment(start: LngLat, end: LngLat): boolean {
+        // Convert to Mercator for accurate angle calculation
+        const startMerc = MercatorCoordinate.fromLngLat([start.lng, start.lat], 0)
+        const endMerc = MercatorCoordinate.fromLngLat([end.lng, end.lat], 0)
+        
+        const dx_m = endMerc.x - startMerc.x
+        const dy_m = endMerc.y - startMerc.y
+        const length_m = Math.hypot(dx_m, dy_m)
+        
+        if (length_m === 0) return true
+        
+        const nx = dx_m / length_m
+        const ny = dy_m / length_m
+        
+        // Check if this is close to a valid metro direction (horizontal, vertical, or 45°)
+        const isHorizontal = Math.abs(ny) < 0.15
+        const isVertical = Math.abs(nx) < 0.15
+        const isDiagonal = Math.abs(Math.abs(nx) - Math.abs(ny)) < 0.15
+        
+        return isHorizontal || isVertical || isDiagonal
+      }
+
+      // Calculate penalty for deviating from original score-based order
+      function calculateScoreDisorder(ordering: { routeId: string; score: number }[]): number {
+        let disorder = 0
+        for (let i = 0; i < ordering.length - 1; i++) {
+          if (ordering[i].score > ordering[i + 1].score) {
+            disorder += Math.abs(ordering[i].score - ordering[i + 1].score)
+          }
+        }
+        return disorder
+      }
+
+      // Helper function to get relative position between two points along a direction
+      function getRelativePosition(pos1: LngLat, pos2: LngLat, direction: { x: number; y: number }): number {
+        const dx = pos2.lng - pos1.lng
+        const dy = pos2.lat - pos1.lat
+        
+        // Project onto perpendicular direction (rotate 90 degrees)
+        const perpX = -direction.y
+        const perpY = direction.x
+        
+        return dx * perpX + dy * perpY
       }
 
       // Helper function for signed distance calculation (same as before)
@@ -1048,19 +1327,19 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
         return { bandIndex, bandSize, spacing, direction: corridor.averageDirection }
       }
 
-      // Helper function to determine metro direction type
-      const getMetroDirection = (dx: number, dy: number): 'horizontal' | 'vertical' | 'diagonal' => {
-        const length = Math.hypot(dx, dy)
-        if (length === 0) return 'horizontal'
+      // Helper function to determine metro direction type using Web Mercator coordinates
+      const getMetroDirection = (dx_m: number, dy_m: number): 'horizontal' | 'vertical' | 'diagonal' => {
+        const length_m = Math.hypot(dx_m, dy_m)
+        if (length_m === 0) return 'horizontal'
         
-        const nx = dx / length
-        const ny = dy / length
+        const nx = dx_m / length_m
+        const ny = dy_m / length_m
         
-        // Check for horizontal (±1, 0)
+        // Check for horizontal (±1, 0) - very small y component
         if (Math.abs(ny) < 0.1) return 'horizontal'
-        // Check for vertical (0, ±1)  
+        // Check for vertical (0, ±1) - very small x component
         if (Math.abs(nx) < 0.1) return 'vertical'
-        // Check for diagonal (±1, ±1) - 45 degrees
+        // Check for diagonal (±1, ±1) - 45 degrees, equal x and y components
         if (Math.abs(Math.abs(nx) - Math.abs(ny)) < 0.2) return 'diagonal'
         
         // Default to closest metro direction
@@ -1068,40 +1347,49 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
         return 'vertical'
       }
 
-      // Helper function to get metro-compliant perpendicular offset direction
-      const getMetroPerpendicularOffset = (segmentDirection: 'horizontal' | 'vertical' | 'diagonal', dx: number, dy: number): { x: number; y: number } => {
-        const length = Math.hypot(dx, dy)
-        if (length === 0) return { x: 0, y: 1 } // Default vertical offset
+      // Helper function to get metro-compliant perpendicular offset direction in Web Mercator space
+      const getMetroPerpendicularOffset = (segmentDirection: 'horizontal' | 'vertical' | 'diagonal', startPos: LngLat, endPos: LngLat): { x: number; y: number } => {
+        // Convert to Mercator for true visual calculations
+        const startMerc = MercatorCoordinate.fromLngLat([startPos.lng, startPos.lat], 0)
+        const endMerc = MercatorCoordinate.fromLngLat([endPos.lng, endPos.lat], 0)
         
-        const nx = dx / length
-        const ny = dy / length
+        const dx_m = endMerc.x - startMerc.x
+        const dy_m = endMerc.y - startMerc.y
+        const length_m = Math.hypot(dx_m, dy_m)
+        
+        if (length_m === 0) return { x: 0, y: 1 } // Default vertical offset
+        
+        const nx = dx_m / length_m
+        const ny = dy_m / length_m
+        
+        // Calculate true perpendicular in Mercator space (rotate 90 degrees counterclockwise)
+        const perpX = -ny  // Left normal
+        const perpY = nx   // Left normal
         
         switch (segmentDirection) {
           case 'horizontal':
-            // For horizontal segments, offset vertically (pure up/down)
-            return { x: 0, y: 1 } // Always offset upward for consistency
+            // For horizontal segments, use pure vertical offset
+            return { x: 0, y: perpY > 0 ? 1 : -1 }
           case 'vertical':
-            // For vertical segments, offset horizontally (pure left/right)  
-            return { x: 1, y: 0 } // Always offset rightward for consistency
+            // For vertical segments, use pure horizontal offset
+            return { x: perpX > 0 ? 1 : -1, y: 0 }
           case 'diagonal': {
-            // For diagonal segments, calculate precise perpendicular in 45-degree increments
-            // Determine which diagonal this is and provide exact perpendicular
-            
-            // Normalize to exact 45-degree angles
-            const angle = Math.atan2(ny, nx)
+            // For diagonal segments, use true perpendicular direction
+            // but snap to the nearest 45-degree increment for visual consistency
+            const angle = Math.atan2(perpY, perpX)
             const quarterPi = Math.PI / 4
             
             // Round to nearest 45-degree angle
             const snapAngle = Math.round(angle / quarterPi) * quarterPi
             
-            // Calculate perpendicular (add 90 degrees)
-            const perpAngle = snapAngle + Math.PI / 2
-            
             return {
-              x: Math.cos(perpAngle),
-              y: Math.sin(perpAngle)
+              x: Math.cos(snapAngle),
+              y: Math.sin(snapAngle)
             }
           }
+          default:
+            // Fallback: use computed perpendicular
+            return { x: perpX, y: perpY }
         }
       }
 
@@ -1148,13 +1436,15 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
         const startPoint = routePoints[i]
         const endPoint = routePoints[i + 1]
         
-        // Calculate segment direction
-        const dx = endPoint.pos.lng - startPoint.pos.lng
-        const dy = endPoint.pos.lat - startPoint.pos.lat
+        // Calculate segment direction in Web Mercator space for consistent direction detection
+        const startMerc = MercatorCoordinate.fromLngLat([startPoint.pos.lng, startPoint.pos.lat], 0)
+        const endMerc = MercatorCoordinate.fromLngLat([endPoint.pos.lng, endPoint.pos.lat], 0)
+        const dx_m = endMerc.x - startMerc.x
+        const dy_m = endMerc.y - startMerc.y
         
         // Determine metro direction type and get proper perpendicular offset for this segment
-        const metroDir = getMetroDirection(dx, dy)
-        const offsetDir = getMetroPerpendicularOffset(metroDir, dx, dy)
+        const metroDir = getMetroDirection(dx_m, dy_m)
+        const offsetDir = getMetroPerpendicularOffset(metroDir, startPoint.pos, endPoint.pos)
         
         // Process start point if not already processed
         if (!processedPoints[i]) {
@@ -1168,25 +1458,9 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
             const offsetMeters = centeredIdx * spacing
             const metersToMerc = merc.meterInMercatorCoordinateUnits()
             
-            // Apply segment-based offset - only horizontal or vertical, never diagonal
-            if (metroDir === 'horizontal') {
-              offsetX = 0 // No x-offset for horizontal segments
-              offsetY = offsetDir.y * offsetMeters * metersToMerc
-            } else if (metroDir === 'vertical') {
-              offsetX = offsetDir.x * offsetMeters * metersToMerc
-              offsetY = 0 // No y-offset for vertical segments
-            } else {
-              // For diagonal segments, choose dominant direction (horizontal or vertical only)
-              if (Math.abs(dx) > Math.abs(dy)) {
-                // Treat as horizontal
-                offsetX = 0
-                offsetY = (dy > 0 ? 1 : -1) * offsetMeters * metersToMerc
-              } else {
-                // Treat as vertical
-                offsetX = (dx > 0 ? 1 : -1) * offsetMeters * metersToMerc
-                offsetY = 0
-              }
-            }
+            // Apply true perpendicular offset in Mercator space
+            offsetX = offsetDir.x * offsetMeters * metersToMerc
+            offsetY = offsetDir.y * offsetMeters * metersToMerc
           }
           
           const z = merc.z - merc.meterInMercatorCoordinateUnits() * 5
@@ -1205,25 +1479,9 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
             const offsetMeters = centeredIdx * spacing
             const metersToMerc = merc.meterInMercatorCoordinateUnits()
             
-            // Apply THE SAME segment-based offset as start point for perfect alignment
-            if (metroDir === 'horizontal') {
-              offsetX = 0 // No x-offset for horizontal segments
-              offsetY = offsetDir.y * offsetMeters * metersToMerc
-            } else if (metroDir === 'vertical') {
-              offsetX = offsetDir.x * offsetMeters * metersToMerc
-              offsetY = 0 // No y-offset for vertical segments
-            } else {
-              // For diagonal segments, use THE SAME logic as start point (horizontal or vertical only)
-              if (Math.abs(dx) > Math.abs(dy)) {
-                // Treat as horizontal
-                offsetX = 0
-                offsetY = (dy > 0 ? 1 : -1) * offsetMeters * metersToMerc
-              } else {
-                // Treat as vertical
-                offsetX = (dx > 0 ? 1 : -1) * offsetMeters * metersToMerc
-                offsetY = 0
-              }
-            }
+            // Apply THE SAME perpendicular offset as start point for perfect alignment
+            offsetX = offsetDir.x * offsetMeters * metersToMerc
+            offsetY = offsetDir.y * offsetMeters * metersToMerc
           }
           
           const z = merc.z - merc.meterInMercatorCoordinateUnits() * 5
@@ -1422,16 +1680,19 @@ function findClosestStation(
   return closestStation;
 }
 
-// Simple distance calculation (same as StationDragHandler)
+// Web Mercator-based distance calculation for consistency
 function getDistanceInMeters(pos1: LngLat, pos2: LngLat): number {
-  const dlng = pos2.lng - pos1.lng;
-  const dlat = pos2.lat - pos1.lat;
+  // Use Web Mercator for accurate distance calculation
+  const merc1 = MercatorCoordinate.fromLngLat([pos1.lng, pos1.lat], 0)
+  const merc2 = MercatorCoordinate.fromLngLat([pos2.lng, pos2.lat], 0)
   
-  // Rough conversion to meters (assuming roughly 111km per degree)
-  const dxMeters = dlng * 111000 * Math.cos(pos1.lat * Math.PI / 180);
-  const dyMeters = dlat * 111000;
+  const dx_m = merc2.x - merc1.x
+  const dy_m = merc2.y - merc1.y
+  const distance_m = Math.hypot(dx_m, dy_m)
   
-  return Math.sqrt(dxMeters * dxMeters + dyMeters * dyMeters);
+  // Convert from Mercator units to meters
+  const meterUnit = merc1.meterInMercatorCoordinateUnits()
+  return distance_m / meterUnit
 }
 
 export default GameThreeLayer
