@@ -383,11 +383,13 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
       }
     }
 
-    // Handle both mouse clicks and touch taps using MapLibre's unified events
+    // Handle both mouse clicks and touch taps separately
     map.on('click', handleMapInteraction)
+    map.on('touchend', handleMapInteraction)
 
     return () => {
       map.off('click', handleMapInteraction)
+      map.off('touchend', handleMapInteraction)
     }
   }, [mapContext?.map, onStationClick, gameData.stations])
 
