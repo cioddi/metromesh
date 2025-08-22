@@ -71,6 +71,64 @@ export default function Game() {
     }
   }, [mapHook?.map]);
 
+  // Building density calculation using queryRenderedFeatures
+  const getBuildingDensity = useCallback((position: LngLat): number => {
+    if (!mapHook?.map) return 0.5;
+    try {
+      const point = mapHook.map.project([position.lng, position.lat]);
+      
+      // Query features in a larger area around the position
+      const radius = 50; // pixels
+      const bbox: [number, number, number, number] = [
+        point.x - radius, 
+        point.y - radius, 
+        point.x + radius, 
+        point.y + radius
+      ];
+      
+      const features = mapHook.map.queryRenderedFeatures(bbox);
+      
+      let buildingCount = 0;
+      let totalFeatures = 0;
+      
+      for (const feature of features) {
+        totalFeatures++;
+        const layerName = feature.layer?.id?.toLowerCase() || '';
+        const sourceLayer = feature.sourceLayer?.toLowerCase() || '';
+        const featureType = feature.properties?.class?.toLowerCase() || '';
+        const landuse = feature.properties?.landuse?.toLowerCase() || '';
+        const building = feature.properties?.building || '';
+        
+        // Check for building indicators
+        if (
+          layerName.includes('building') ||
+          layerName.includes('house') ||
+          sourceLayer.includes('building') ||
+          featureType === 'building' ||
+          landuse === 'residential' ||
+          landuse === 'commercial' ||
+          landuse === 'industrial' ||
+          building === 'yes' ||
+          building === 'house' ||
+          building === 'residential'
+        ) {
+          buildingCount++;
+        }
+      }
+      
+      // Normalize to 0-1 range
+      if (totalFeatures === 0) return 0.3; // Default low density
+      const density = Math.min(buildingCount / Math.max(totalFeatures, 10), 1.0);
+      
+      // Apply minimum and scale to useful range (0.2 to 1.0)
+      return 0.2 + density * 0.8;
+      
+    } catch (error) {
+      console.warn('Error calculating building density:', error);
+      return 0.5; // Default medium density
+    }
+  }, [mapHook?.map]);
+
   // Reset the initial stations flag when game resets
   useEffect(() => {
     if (stations.length === 0) {
@@ -105,7 +163,7 @@ export default function Game() {
           pos = randomPositionInBounds();
           attempts++;
         } while (isPositionOnWater(pos) && attempts < 10);
-        addStation(pos, isPositionOnWater);
+        addStation(pos, isPositionOnWater, getBuildingDensity);
       }, 0);
       setTimeout(() => {
         let pos;
@@ -114,7 +172,7 @@ export default function Game() {
           pos = randomPositionInBounds();
           attempts++;
         } while (isPositionOnWater(pos) && attempts < 10);
-        addStation(pos, isPositionOnWater);
+        addStation(pos, isPositionOnWater, getBuildingDensity);
       }, 1000);
     }
   }, [stations.length, addStation, mapHook?.map, isPositionOnWater]);
@@ -127,13 +185,20 @@ export default function Game() {
 
       // Automatically add stations
       if (Math.random() < GAME_CONFIG.stationSpawnProbability && stations.length < GAME_CONFIG.maxStations) {
-        addStation(undefined, isPositionOnWater); // No position provided = random placement, avoiding water
+        addStation(undefined, isPositionOnWater, getBuildingDensity); // No position provided = random placement, avoiding water
       }
 
-      // Spawn passengers by adding them to random stations
-      if (Math.random() < GAME_CONFIG.passengerSpawnProbability && stations.length > 0) {
-        const randomStation = stations[Math.floor(Math.random() * stations.length)];
-        addPassengerToStation(randomStation.id);
+      // Spawn passengers based on building density
+      if (stations.length > 0) {
+        stations.forEach(station => {
+          // Base spawn probability modified by building density
+          const buildingDensity = station.buildingDensity || 0.5;
+          const adjustedSpawnRate = GAME_CONFIG.passengerSpawnProbability * (0.3 + 0.7 * buildingDensity); // 0.3x to 1.0x base rate
+          
+          if (Math.random() < adjustedSpawnRate) {
+            addPassengerToStation(station.id);
+          }
+        });
       }
     }, GAME_CONFIG.gameLoopInterval);
 
@@ -145,6 +210,7 @@ export default function Game() {
     addPassengerToStation,
     stations,
     isPositionOnWater,
+    getBuildingDensity,
   ]);
 
 

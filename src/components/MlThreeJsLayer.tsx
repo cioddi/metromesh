@@ -189,6 +189,28 @@ const MlThreeJsLayer = ({
         
         renderer.autoClear = false
         rendererRef.current = renderer
+        
+        // Handle map resize events to keep Three.js viewport synchronized
+        const handleResize = () => {
+          if (rendererRef.current) {
+            const canvas = mapInstance.getCanvas()
+            rendererRef.current.setSize(canvas.width, canvas.height, false)
+          }
+        }
+        
+        mapInstance.on('resize', handleResize)
+        
+        // Store cleanup function for resize listener
+        this.resizeHandler = () => {
+          mapInstance.off('resize', handleResize)
+        }
+      },
+      
+      onRemove: function() {
+        // Clean up resize handler
+        if (this.resizeHandler) {
+          this.resizeHandler()
+        }
       },
       
       render: function(_gl: WebGLRenderingContext | WebGL2RenderingContext, matrix: any) { // eslint-disable-line @typescript-eslint/no-explicit-any

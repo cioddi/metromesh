@@ -8,6 +8,7 @@ interface Station {
   color: string
   passengerCount: number // Simple count instead of complex array
   overloadedSince?: number // Timestamp when station first reached 20+ passengers
+  buildingDensity?: number // Building count in area (0-1 normalized)
 }
 
 interface Route {
@@ -48,7 +49,7 @@ interface GameState {
 }
 
 interface GameActions {
-  addStation: (position?: LngLat, waterCheckFn?: (position: LngLat) => boolean) => void
+  addStation: (position?: LngLat, waterCheckFn?: (position: LngLat) => boolean, buildingDensityFn?: (position: LngLat) => number) => void
   addRoute: (stationIds: string[], color: string) => void
   extendRoute: (routeId: string, stationId: string, atEnd: boolean) => void
   updateTrainPositions: () => void
@@ -78,15 +79,26 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   gameStartTime: Date.now(),
 
   // Actions
-  addStation: (position, waterCheckFn) => {
+  addStation: (position, waterCheckFn, buildingDensityFn) => {
     const state = get()
     const stationPosition = position || generateRandomPosition(state.stations, waterCheckFn)
+    
+    // Calculate building density if function provided
+    let buildingDensity = 0.5 // Default medium density
+    if (buildingDensityFn) {
+      try {
+        buildingDensity = Math.max(0, Math.min(1, buildingDensityFn(stationPosition)))
+      } catch (error) {
+        console.warn('Error calculating building density:', error)
+      }
+    }
     
     const newStation: Station = {
       id: `station-${Date.now()}`,
       position: stationPosition,
       color: STATION_COLORS[state.stations.length % STATION_COLORS.length],
-      passengerCount: 0
+      passengerCount: 0,
+      buildingDensity
     }
 
     set({ stations: [...state.stations, newStation] })
@@ -179,6 +191,9 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       let newPassengerCount = train.passengerCount
       let newLastStationVisited = train.lastStationVisited
 
+      // Check if route is circular (first and last station are the same)
+      const isCircularRoute = route.stations.length > 2 && route.stations[0] === route.stations[route.stations.length - 1]
+      
       // Check if train is at a station (within 0.01 units for precision)
       const currentStationIndex = Math.round(train.position)
       const distanceToStation = Math.abs(train.position - currentStationIndex)
@@ -186,7 +201,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       if (distanceToStation < 0.01 && currentStationIndex >= 0 && currentStationIndex < route.stations.length) {
         // Train is at a station
         if (newWaitTime <= 0 && currentStationIndex !== train.lastStationVisited) {
-          // Just arrived at a NEW station - start waiting and handle passengers
+          // Just arrived at a NEW station - handle passengers
           const stationId = route.stations[currentStationIndex]
           
           // Score points for delivered passengers
@@ -232,14 +247,31 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
         // Not at a station - move normally and reset wait time
         newPosition = train.position + speedPerLoop * train.direction * state.gameSpeed
         newWaitTime = 0
+        
+        // Reset lastStationVisited when train moves away from a station
+        // This allows trains to visit the same station again on return trips
+        const newStationIndex = Math.round(newPosition)
+        if (newStationIndex !== train.lastStationVisited) {
+          newLastStationVisited = -1 // Reset when moving between stations
+        }
 
-        // Handle boundaries
-        if (newPosition >= route.stations.length - 1) {
-          newPosition = route.stations.length - 1
-          newDirection = -1
-        } else if (newPosition <= 0) {
-          newPosition = 0
-          newDirection = 1
+        // Handle boundaries based on route type
+        if (isCircularRoute) {
+          // Circular route: continue in same direction, wrap around
+          if (newPosition >= route.stations.length - 1) {
+            newPosition = 0 // Loop back to start
+          } else if (newPosition < 0) {
+            newPosition = route.stations.length - 2 // Loop back to end (avoiding duplicate last station)
+          }
+        } else {
+          // Linear route: reverse direction at ends
+          if (newPosition >= route.stations.length - 1) {
+            newPosition = route.stations.length - 1
+            newDirection = -1
+          } else if (newPosition <= 0) {
+            newPosition = 0
+            newDirection = 1
+          }
         }
       }
 

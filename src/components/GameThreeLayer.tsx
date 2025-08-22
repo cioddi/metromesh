@@ -630,7 +630,33 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
       scene.add(stationObj.object3D)
     })
     
-    // Add routes as lines
+    // Helper function to find overlapping route segments
+    const findOverlappingSegments = (routes: typeof gameData.routes) => {
+      const segments = new Map<string, string[]>() // segmentKey -> [routeId1, routeId2, ...]
+      
+      routes.forEach(route => {
+        if (route.stations.length < 2) return
+        
+        for (let i = 0; i < route.stations.length - 1; i++) {
+          const stationA = route.stations[i]
+          const stationB = route.stations[i + 1]
+          
+          // Create segment key (ensure consistent ordering)
+          const segmentKey = [stationA, stationB].sort().join('->')
+          
+          if (!segments.has(segmentKey)) {
+            segments.set(segmentKey, [])
+          }
+          segments.get(segmentKey)!.push(route.id)
+        }
+      })
+      
+      return segments
+    }
+    
+    const overlappingSegments = findOverlappingSegments(gameData.routes)
+
+    // Add routes as lines with parallel rendering for overlaps
     gameData.routes.forEach(route => {
       if (route.stations.length < 2) return
       
@@ -647,17 +673,52 @@ const GameThreeLayer = ({ gameData, onStationClick, selectedStationId }: GameThr
         const currentStation = routeStations[i]!
         const nextStation = routeStations[i + 1]!
         
+        // Check if this segment overlaps with other routes
+        const segmentKey = [currentStation.id, nextStation.id].sort().join('->')
+        const overlappingRoutes = overlappingSegments.get(segmentKey) || []
+        const routeIndex = overlappingRoutes.indexOf(route.id)
+        const totalOverlapping = overlappingRoutes.length
+        
+        // Calculate offset for parallel lines
+        let offset = 0
+        if (totalOverlapping > 1) {
+          // Spread routes across parallel positions
+          const spacing = 10 // meters between parallel lines
+          offset = (routeIndex - (totalOverlapping - 1) / 2) * spacing
+        }
+        
         // Create metro route between consecutive stations
         const routeCoords = createMetroRouteCoordinates(currentStation.position, nextStation.position)
         
-        // Convert to Three.js points (skip first point if not the first segment to avoid duplicates)
+        // Convert to Three.js points with offset for parallel lines
         const startIndex = i === 0 ? 0 : 1
         for (let j = startIndex; j < routeCoords.length; j++) {
           const coord = routeCoords[j]
           const mercator = MercatorCoordinate.fromLngLat([coord[0], coord[1]], 0)
+          
+          // Apply perpendicular offset for parallel lines
+          let offsetX = 0, offsetY = 0
+          if (offset !== 0 && j > 0) {
+            const prevCoord = routeCoords[j - 1]
+            // Calculate perpendicular direction
+            const dx = coord[0] - prevCoord[0]
+            const dy = coord[1] - prevCoord[1]
+            const length = Math.sqrt(dx * dx + dy * dy)
+            if (length > 0) {
+              // Perpendicular vector (rotated 90 degrees)
+              const perpX = -dy / length
+              const perpY = dx / length
+              
+              // Apply offset in mercator units
+              const offsetMeters = offset * mercator.meterInMercatorCoordinateUnits()
+              offsetX = perpX * offsetMeters
+              offsetY = perpY * offsetMeters
+            }
+          }
+          
           // Place route lines slightly below stations (negative z offset)
           const routeZ = mercator.z - mercator.meterInMercatorCoordinateUnits() * 5 // 5 meters below
-          points.push(new THREE.Vector3(mercator.x, mercator.y, routeZ))
+          points.push(new THREE.Vector3(mercator.x + offsetX, mercator.y + offsetY, routeZ))
         }
       }
       
