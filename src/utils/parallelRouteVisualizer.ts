@@ -37,24 +37,46 @@ export function createMetroRouteCoordinates(
     return coordinates;
   }
 
-  // Otherwise, always use a 45-degree diagonal as far as possible, then a straight segment
-  // Find the maximum possible diagonal distance (in Mercator units)
+  // Use intelligent diagonal-to-straight transition
   const diagComponent = Math.min(absDx_m, absDy_m);
-  const diagX = startMerc.x + signDx * diagComponent;
-  const diagY = startMerc.y + signDy * diagComponent;
-  const diagMerc = new MercatorCoordinate(diagX, diagY, 0);
-  const diagLngLat = diagMerc.toLngLat();
+  const remainingDx = absDx_m - diagComponent;
+  const remainingDy = absDy_m - diagComponent;
+  const remainingDistance = Math.max(remainingDx, remainingDy);
+  
+  // If remaining straight segment would be very short, extend diagonal instead
+  const minStraightSegment = 20 * meterUnit; // 20m minimum straight segment
+  
+  if (remainingDistance < minStraightSegment) {
+    // Extend diagonal all the way to target to avoid tiny 90° segments
+    coordinates.push([target.lng, target.lat]);
+  } else {
+    // Use smooth corner approach with circular arc transition
+    const diagX = startMerc.x + signDx * diagComponent;
+    const diagY = startMerc.y + signDy * diagComponent;
 
-  // Add the diagonal point
-  if (
-    Math.abs(diagLngLat.lng - start.lng) > diagThreshold ||
-    Math.abs(diagLngLat.lat - start.lat) > diagThreshold
-  ) {
-    coordinates.push([diagLngLat.lng, diagLngLat.lat]);
+    // Create extremely subtle corner rounding with minimal smoothing
+    const cornerRadius = 1 * meterUnit; // Tiny 1m radius for minimal smoothing
+    
+    // Calculate the corner point with very slight rounding
+    const cornerOffsetX = signDx * cornerRadius * 0.15; // Extremely small offset
+    const cornerOffsetY = signDy * cornerRadius * 0.15;
+    
+    const roundedCornerX = diagX - cornerOffsetX;
+    const roundedCornerY = diagY - cornerOffsetY;
+    
+    // Add diagonal segment up to rounded corner
+    if (
+      Math.abs(roundedCornerX - startMerc.x) > diagThreshold ||
+      Math.abs(roundedCornerY - startMerc.y) > diagThreshold
+    ) {
+      const roundedCornerMerc = new MercatorCoordinate(roundedCornerX, roundedCornerY, 0);
+      const roundedCornerLngLat = roundedCornerMerc.toLngLat();
+      coordinates.push([roundedCornerLngLat.lng, roundedCornerLngLat.lat]);
+    }
+
+    // Add the final straight segment to the target
+    coordinates.push([target.lng, target.lat]);
   }
-
-  // Add the final straight segment to the target
-  coordinates.push([target.lng, target.lat]);
 
   // Debug: log the generated coordinates for this segment
   if (typeof window !== 'undefined' && (window as unknown as { DEBUG_METROMESH_PATHS?: boolean }).DEBUG_METROMESH_PATHS) {
@@ -457,11 +479,23 @@ export function calculateParallelRouteVisualization(
           const dotProduct = microA.direction.x * microB.direction.x + microA.direction.y * microB.direction.y
           const angleDiff = Math.acos(Math.min(1, Math.max(-1, Math.abs(dotProduct))))
           
+          // More lenient for diagonal routes - they need better parallel detection
+          const isDiagonalA = Math.abs(Math.abs(microA.direction.x) - Math.abs(microA.direction.y)) < 0.3
+          const isDiagonalB = Math.abs(Math.abs(microB.direction.x) - Math.abs(microB.direction.y)) < 0.3
+          const bothDiagonal = isDiagonalA && isDiagonalB
+          
+          // Use more lenient thresholds for diagonal routes
+          const effectiveAngleThreshold = bothDiagonal ? angleThreshold * 1.5 : angleThreshold
+          const effectiveDotProductThreshold = bothDiagonal ? 0.2 : 0.3
+          
           // Require same general direction (not anti-parallel) and within angle threshold
-          if (angleDiff < angleThreshold && dotProduct > 0.3) {
+          if (angleDiff < effectiveAngleThreshold && dotProduct > effectiveDotProductThreshold) {
             const similarity = Math.abs(dotProduct)
-            // Boost similarity for truly co-directional segments
-            const adjustedSimilarity = dotProduct > 0.8 ? similarity * 1.2 : similarity
+            // Extra boost for diagonal routes to ensure they get properly grouped
+            let adjustedSimilarity = dotProduct > 0.8 ? similarity * 1.2 : similarity
+            if (bothDiagonal) {
+              adjustedSimilarity *= 1.3 // Additional boost for diagonal parallel detection
+            }
             parallelPairs.push({ a: microA, b: microB, distance, similarity: adjustedSimilarity, strength })
           }
         }
@@ -621,15 +655,34 @@ export function calculateParallelRouteVisualization(
           }
         }
         
-        // Anti-crossing logic for complex networks
-        // Prefer outer layers when station already has many routes to reduce crossings
+        // Calculate usage metrics for intelligent distribution
+        const existingRoutesOnSide = attachmentPoints.filter(p => p.occupied && p.side === point.side).length
         const existingRoutesOnStation = attachmentPoints.filter(p => p.occupied).length
-        if (existingRoutesOnStation >= 4) {
-          // For busy stations, prefer outer layers to avoid congestion
-          score += (point.layer * 10) // Outer layers get bonus for busy stations
+        
+        // Anti-overlap strategy: strongly discourage overlapping sides
+        if (existingRoutesOnSide === 0) {
+          score += 50 // Strong bonus for unused sides
         } else {
-          // For less busy stations, prefer inner layers for efficiency
-          score += ((ATTACHMENT_LAYERS - 1 - point.layer) * 5)
+          // Heavy penalty for overlapping routes, increasing exponentially
+          score -= (existingRoutesOnSide * existingRoutesOnSide * 150)
+          
+          // If we must use an occupied side, prefer different layers
+          const sameLayerRoutes = attachmentPoints.filter(p => p.occupied && p.side === point.side && p.layer === point.layer).length
+          if (sameLayerRoutes > 0) {
+            score -= 300 // Extreme penalty for same side AND same layer
+          }
+        }
+        
+        // Smart layer distribution based on station congestion
+        if (existingRoutesOnStation >= 6) {
+          // For very busy stations, use outer layers to spread routes
+          score += (point.layer * 15)
+        } else if (existingRoutesOnStation >= 3) {
+          // For moderately busy stations, balance inner/outer
+          score += (Math.abs(point.layer - 2) * -5) // Prefer middle layers
+        } else {
+          // For less busy stations, prefer inner layers for compactness
+          score += ((ATTACHMENT_LAYERS - 1 - point.layer) * 8)
         }
         
         if (score > bestScore) {
@@ -645,7 +698,9 @@ export function calculateParallelRouteVisualization(
         
         // Debug output for octagonal system
         if (typeof window !== 'undefined' && (window as unknown as { DEBUG_METROMESH_OCTAGON?: boolean }).DEBUG_METROMESH_OCTAGON) {
-          console.log(`[MetroMesh] Route ${route.id} attached to station ${station.id} at Layer ${bestPoint.layer}, Side ${bestPoint.side} (angle: ${(bestPoint.angle * 180 / Math.PI).toFixed(1)}°, score: ${bestScore})`)
+          const sideNames = ['East', 'NE', 'North', 'NW', 'West', 'SW', 'South', 'SE']
+          const existingOnSide = attachmentPoints.filter(p => p.occupied && p.side === bestPoint.side).length - 1 // -1 because we just occupied this one
+          console.log(`[MetroMesh] Route ${route.id} → Station ${station.id}: Layer ${bestPoint.layer}, Side ${bestPoint.side} (${sideNames[bestPoint.side]}, ${(bestPoint.angle * 180 / Math.PI).toFixed(1)}°), Score: ${bestScore}, Existing on side: ${existingOnSide}`)
         }
       }
     }
@@ -788,56 +843,7 @@ export function generateVisualRouteNetwork(
   // Generate Route Visualization Data with Pre-calculated Points and Offsets
   const routeVisualizationData: RouteVisualizationData[] = [];
 
-  // Helper function to find corridor info for a position
-  const findCorridorInfoForPosition = (
-    pos: LngLat,
-    routeId: string
-  ): {
-    bandIndex: number;
-    bandSize: number;
-    spacing: number;
-    direction: { x: number; y: number };
-  } | null => {
-    // Find nearest micro-segment for this route
-    let nearestMicro: MicroSegment | null = null;
-    let minDistance = Infinity;
-
-    const routeMicros = allMicroSegments.filter((m) => m.routeId === routeId);
-
-    for (const micro of routeMicros) {
-      const distance = getDistanceInMeters(pos, micro.centerPos);
-      if (distance < minDistance) {
-        minDistance = distance;
-        nearestMicro = micro;
-      }
-    }
-
-    if (!nearestMicro || minDistance > 50) return null; // Within 50m
-
-    const relevantCorridors = corridors.filter((c) =>
-      c.microSegments.some((m) => m.id === nearestMicro!.id)
-    );
-    if (relevantCorridors.length === 0) return null;
-
-    const corridor = relevantCorridors[0];
-    const routesInCorridor = Array.from(corridor.routes);
-    const bandIndex = routesInCorridor.indexOf(routeId);
-    const bandSize = corridor.routes.size;
-
-    const isDiagonal =
-      Math.abs(
-        Math.abs(corridor.averageDirection.x) -
-          Math.abs(corridor.averageDirection.y)
-      ) < 0.3;
-    const spacing = isDiagonal ? 50 : 25;
-
-    return {
-      bandIndex,
-      bandSize,
-      spacing,
-      direction: corridor.averageDirection,
-    };
-  };
+  // Removed findCorridorInfoForPosition function - now using consistent route-wide corridor info
 
   // Helper function to calculate route offset direction
   const calculateRouteOffsetDirection = (
@@ -874,38 +880,71 @@ export function generateVisualRouteNetwork(
       }
     }
 
-    // Pre-calculate all route points with corridor information
+    // Pre-calculate all route points with comprehensive corridor information
     const routePoints: RoutePoint[] = [];
     const routeMicros = allMicroSegments.filter((m) => m.routeId === route.id);
 
-    const routeCorridorInfo: { bandIndex: number; bandSize: number; spacing: number; direction: { x: number; y: number } } | null =
-      routeMicros.length > 0
-        ? (() => {
-            const firstMicro = routeMicros[0];
-            const corridorsForMicro = corridors.filter((c) =>
-              c.microSegments.some((m) => m.id === firstMicro.id)
-            );
-            if (corridorsForMicro.length > 0) {
-              const corridor = corridorsForMicro[0];
-              const routesInCorridor = Array.from(corridor.routes);
-              const bandIndex = routesInCorridor.indexOf(route.id);
-              const bandSize = corridor.routes.size;
-              const isDiagonal =
-                Math.abs(
-                  Math.abs(corridor.averageDirection.x) -
-                    Math.abs(corridor.averageDirection.y)
-                ) < 0.3;
-              const spacing = isDiagonal ? 50 : 25;
-              return {
-                bandIndex,
-                bandSize,
-                spacing,
-                direction: corridor.averageDirection,
-              };
-            }
-            return null;
-          })()
-        : null;
+    // Build comprehensive corridor mapping for entire route to ensure parallelism
+    const routeCorridorMap = new Map<number, { bandIndex: number; bandSize: number; spacing: number; direction: { x: number; y: number } }>();
+    
+    // Find best available corridor for this entire route by analyzing all segments
+    let bestCorridor = null;
+    let bestCorridorScore = 0;
+    
+    // Analyze all corridors to find the best match for this route
+    for (const corridor of corridors) {
+      if (corridor.routes.has(route.id)) {
+        // This route is already assigned to this corridor - perfect match
+        bestCorridor = corridor;
+        bestCorridorScore = 1000;
+        break;
+      }
+    }
+    
+    // If not directly assigned, find best available corridor based on route geometry
+    if (!bestCorridor) {
+      for (const corridor of corridors) {
+        let score = 0;
+        
+        // Check how well this route's micro-segments align with corridor direction
+        for (const micro of routeMicros) {
+          const alignment = Math.abs(
+            micro.direction.x * corridor.averageDirection.x + 
+            micro.direction.y * corridor.averageDirection.y
+          );
+          score += alignment;
+        }
+        
+        // Prefer corridors with fewer routes (less congested)
+        const congestionPenalty = corridor.routes.size * 10;
+        score -= congestionPenalty;
+        
+        if (score > bestCorridorScore) {
+          bestCorridorScore = score;
+          bestCorridor = corridor;
+        }
+      }
+    }
+    
+    // Assign route to best corridor found
+    if (bestCorridor) {
+      bestCorridor.routes.add(route.id);
+      const routesInCorridor = Array.from(bestCorridor.routes);
+      const bandIndex = routesInCorridor.indexOf(route.id);
+      const bandSize = bestCorridor.routes.size;
+      
+      routeCorridorMap.set(0, {
+        bandIndex,
+        bandSize,
+        spacing: 30,
+        direction: bestCorridor.averageDirection,
+      });
+    }
+    
+    // Use most common corridor info as default for entire route to ensure consistency
+    const routeCorridorInfo = routeCorridorMap.size > 0 
+      ? Array.from(routeCorridorMap.values())[0] 
+      : null;
 
     for (let i = 0; i < routeStations.length - 1; i++) {
       const a = routeStations[i]!, b = routeStations[i + 1]!;
@@ -916,7 +955,10 @@ export function generateVisualRouteNetwork(
         const [lng, lat] = coords[j];
         const currentPos = { lng, lat };
         const mercatorCoord = MercatorCoordinate.fromLngLat([lng, lat], 0);
-        const corridorInfo = findCorridorInfoForPosition(currentPos, route.id);
+        
+        // Use consistent route-wide corridor info instead of per-point lookup
+        // This ensures all points on the route maintain the same corridor alignment
+        const corridorInfo = routeCorridorInfo;
 
         routePoints.push({
           pos: currentPos,
