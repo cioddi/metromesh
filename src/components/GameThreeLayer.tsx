@@ -294,7 +294,7 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
     
     // Clear existing game objects with proper disposal
     const gameObjects = scene.children.filter((child: THREE.Object3D) => 
-      child.userData && ['station', 'route', 'train', 'passenger', 'passengers', 'selection-ring', 'unconnected-ring', 'distress-particle', 'distress-glow'].includes(child.userData.type)
+      child.userData && ['station', 'route', 'route-simple', 'train', 'passenger', 'passengers', 'selection-ring', 'unconnected-ring', 'distress-particle', 'distress-glow'].includes(child.userData.type)
     )
     gameObjects.forEach((obj: THREE.Object3D) => {
       scene.remove(obj)
@@ -567,20 +567,20 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
           const endMercator = MercatorCoordinate.fromLngLat([end.position.lng, end.position.lat], 0)
 
           const points = [
-            new THREE.Vector3(startMercator.x, startMercator.y, startMercator.z - 0.000005),
-            new THREE.Vector3(endMercator.x, endMercator.y, endMercator.z - 0.000005)
+            new THREE.Vector3(startMercator.x, startMercator.y, startMercator.z + 0.000001),
+            new THREE.Vector3(endMercator.x, endMercator.y, endMercator.z + 0.000001)
           ]
 
           const geometry = new THREE.BufferGeometry().setFromPoints(points)
           const material = new THREE.LineBasicMaterial({
             color: route.color,
-            linewidth: 4,
-            transparent: true,
-            opacity: 0.7
+            linewidth: 8,
+            transparent: false,
+            opacity: 1.0
           })
 
           const line = new THREE.Line(geometry, material)
-          line.userData = { type: 'route-simple', routeId: route.id }
+          line.userData = { type: 'route-simple', routeId: route.id, segment: i }
           scene.add(line)
         }
       })
