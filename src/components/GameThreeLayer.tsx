@@ -3,7 +3,10 @@ import { useMap } from '@mapcomponents/react-maplibre'
 import * as THREE from 'three'
 import { MercatorCoordinate } from 'maplibre-gl'
 import type { LngLat } from '../types'
-import { createStationObject } from '../utils/threeStationFactory'
+import { 
+  createStationObject,
+  disposeAllSharedThreeResources
+} from '../utils/threeObjectFactories'
 import { PERFORMANCE_CONFIG } from '../config/gameConfig'
 import { useGameStore } from '../store/gameStore'
 import { getTrainPositionFromMovementNetwork } from '../utils/routeNetworkCalculator'
@@ -30,6 +33,7 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
   const mouseRef = useRef<THREE.Vector2 | null>(null)
   
   // Shared geometries and materials for performance
+  // TODO: Migrate to factories incrementally
   const sharedGeometriesRef = useRef<{
     passengerGeometry?: THREE.CylinderGeometry
     trainPassengerGeometry?: THREE.CylinderGeometry
@@ -140,6 +144,7 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
         mouseRef.current = new THREE.Vector2()
         
         // Initialize optimized geometries and materials for maximum performance
+        // TODO: Migrate to individual factories
         // Use simple cylinders instead of spheres for passengers - much more efficient
         sharedGeometriesRef.current.passengerGeometry = new THREE.CylinderGeometry(
           0.15, // radiusTop
@@ -158,11 +163,9 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
         // Use basic materials for all passengers - no lighting calculations needed
         sharedGeometriesRef.current.passengerMaterial = new THREE.MeshBasicMaterial({ 
           color: 0x555555,
-          // No side property needed for basic rendering
         })
         sharedGeometriesRef.current.trainPassengerMaterial = new THREE.MeshBasicMaterial({ 
           color: 0x333333,
-          // Removed all expensive material properties for maximum performance
         })
         
         // Initialize selection ring geometry and material
@@ -172,7 +175,7 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
           32   // Segments for smooth circle
         )
         sharedGeometriesRef.current.selectionRingMaterial = new THREE.MeshBasicMaterial({
-          color: 0xffae00, // Blue color
+          color: 0xffae00,
           side: THREE.DoubleSide
         })
         
@@ -767,41 +770,8 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
   // Cleanup on component unmount
   useEffect(() => {
     return () => {
-      // Dispose all shared geometries and materials
-      const shared = sharedGeometriesRef.current;
-      
-      // Dispose shared geometries
-      if (shared.passengerGeometry) shared.passengerGeometry.dispose();
-      if (shared.trainPassengerGeometry) shared.trainPassengerGeometry.dispose();
-      if (shared.selectionRingGeometry) shared.selectionRingGeometry.dispose();
-      if (shared.unconnectedRingGeometry) shared.unconnectedRingGeometry.dispose();
-      if (shared.distressParticleGeometry) shared.distressParticleGeometry.dispose();
-      
-      // Dispose shared materials
-      if (shared.passengerMaterial) shared.passengerMaterial.dispose();
-      if (shared.trainPassengerMaterial) shared.trainPassengerMaterial.dispose();
-      if (shared.selectionRingMaterial) shared.selectionRingMaterial.dispose();
-      if (shared.unconnectedRingMaterial) shared.unconnectedRingMaterial.dispose();
-      if (shared.distressParticleMaterial) shared.distressParticleMaterial.dispose();
-      
-      // Dispose instanced meshes
-      const instances = instancedMeshesRef.current;
-      if (instances.stationPassengers) {
-        instances.stationPassengers.geometry.dispose();
-        if (Array.isArray(instances.stationPassengers.material)) {
-          instances.stationPassengers.material.forEach(mat => mat.dispose());
-        } else {
-          instances.stationPassengers.material.dispose();
-        }
-      }
-      if (instances.trainPassengers) {
-        instances.trainPassengers.geometry.dispose();
-        if (Array.isArray(instances.trainPassengers.material)) {
-          instances.trainPassengers.material.forEach(mat => mat.dispose());
-        } else {
-          instances.trainPassengers.material.dispose();
-        }
-      }
+      // Dispose all shared Three.js resources using factories
+      disposeAllSharedThreeResources();
       
       // Remove Three.js layer from map if it exists
       if (mapContext?.map && layerRef.current && mapContext.map.getLayer('stations-3d')) {

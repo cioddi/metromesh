@@ -166,7 +166,7 @@ export default function GameUI({ gameState, onStationSelectFromList }: GameUIPro
         </div>
         <div className="visualization-controls">
           <button onClick={toggleVisualization} className="visualization-toggle">
-            {useParallelVisualization ? 'Switch to Simple View' : 'Switch to Parallel View'}
+            {useParallelVisualization ? 'Simple View' : 'Parallel View'}
           </button>
         </div>
       </div>
