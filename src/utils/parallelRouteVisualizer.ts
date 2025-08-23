@@ -1,6 +1,67 @@
 import { MercatorCoordinate } from 'maplibre-gl'
 import type { LngLat, Route } from '../types'
-import { createMetroRouteCoordinates } from './routeNetworkCalculator'
+
+// Comprehensive metro-style route coordinate generation with perfect straight line guarantees
+export function createMetroRouteCoordinates(
+  start: LngLat,
+  target: LngLat
+): number[][] {
+  // Convert to Web Mercator coordinates for true visual calculations
+  const startMerc = MercatorCoordinate.fromLngLat([start.lng, start.lat], 0);
+  const targetMerc = MercatorCoordinate.fromLngLat([target.lng, target.lat], 0);
+
+  const dx_m = targetMerc.x - startMerc.x;
+  const dy_m = targetMerc.y - startMerc.y;
+
+  // Start with the starting point
+  const coordinates: number[][] = [[start.lng, start.lat]];
+
+  // Calculate alignment thresholds in Mercator space
+  const meterUnit = startMerc.meterInMercatorCoordinateUnits();
+  const alignmentThreshold = 10 * meterUnit; // ~10m threshold
+
+  // Only allow straight or 45-degree diagonal connections, never a hard 90-degree corner
+  const absDx_m = Math.abs(dx_m);
+  const absDy_m = Math.abs(dy_m);
+  const signDx = Math.sign(dx_m);
+  const signDy = Math.sign(dy_m);
+  const diagThreshold = 0.000001;
+
+  // If the two points are nearly aligned horizontally, vertically, or diagonally, draw a straight line
+  const isHorizontal = absDy_m < alignmentThreshold;
+  const isVertical = absDx_m < alignmentThreshold;
+  const isDiagonal = Math.abs(absDx_m - absDy_m) < alignmentThreshold;
+
+  if (isHorizontal || isVertical || isDiagonal) {
+    coordinates.push([target.lng, target.lat]);
+    return coordinates;
+  }
+
+  // Otherwise, always use a 45-degree diagonal as far as possible, then a straight segment
+  // Find the maximum possible diagonal distance (in Mercator units)
+  const diagComponent = Math.min(absDx_m, absDy_m);
+  const diagX = startMerc.x + signDx * diagComponent;
+  const diagY = startMerc.y + signDy * diagComponent;
+  const diagMerc = new MercatorCoordinate(diagX, diagY, 0);
+  const diagLngLat = diagMerc.toLngLat();
+
+  // Add the diagonal point
+  if (
+    Math.abs(diagLngLat.lng - start.lng) > diagThreshold ||
+    Math.abs(diagLngLat.lat - start.lat) > diagThreshold
+  ) {
+    coordinates.push([diagLngLat.lng, diagLngLat.lat]);
+  }
+
+  // Add the final straight segment to the target
+  coordinates.push([target.lng, target.lat]);
+
+  // Debug: log the generated coordinates for this segment
+  if (typeof window !== 'undefined' && (window as unknown as { DEBUG_METROMESH_PATHS?: boolean }).DEBUG_METROMESH_PATHS) {
+    console.log('[MetroMesh] Path from', start, 'to', target, '->', coordinates);
+  }
+  return coordinates;
+}
 
 // Interface definitions for parallel route visualization
 export interface MicroSegment {
@@ -42,6 +103,42 @@ export interface ParallelRouteData {
   stationAttachmentPoints: Map<string, AttachmentPoint[]>;
   routeAttachmentPoints: Map<string, Map<string, AttachmentPoint>>;
   microSegments: MicroSegment[];
+}
+
+// Visualization-specific interfaces
+export interface RoutePoint {
+  pos: LngLat;
+  mercator: { x: number; y: number; z: number };
+  segmentIndex: number;
+  pointIndex: number;
+  corridorInfo: {
+    bandIndex: number;
+    bandSize: number;
+    spacing: number;
+    direction: { x: number; y: number };
+  } | null;
+  isStation: boolean;
+}
+
+export interface RouteVisualizationData {
+  routeId: string;
+  coordinates: LngLat[];
+  routePoints: RoutePoint[];
+  // Pre-calculated 3D points ready for Three.js rendering
+  renderPoints: Array<{ x: number; y: number; z: number }>;
+  parallelOffset: number;
+  attachmentPoints: Map<string, AttachmentPoint>;
+  routeOffsetDirection: { x: number; y: number } | null;
+}
+
+// Visual route network data (parallel-optimized for rendering)
+export interface VisualRouteNetwork {
+  routes: RouteVisualizationData[];
+  corridors: Corridor[];
+  stationAttachmentPoints: Map<string, AttachmentPoint[]>;
+  routeAttachmentPoints: Map<string, Map<string, AttachmentPoint>>;
+  microSegments: MicroSegment[];
+  lastUpdated: number;
 }
 
 // Helper functions for geometric calculations
@@ -649,4 +746,297 @@ export function calculateParallelRouteVisualization(
     routeAttachmentPoints,
     microSegments: allMicroSegments
   }
+}
+
+// Generate complete visual route network with pre-calculated rendering data
+export function generateVisualRouteNetwork(
+  routes: Route[],
+  stations: Array<{ id: string; position: LngLat; color: string; passengerCount: number }>,
+  parallelData: ParallelRouteData
+): VisualRouteNetwork {
+  const { corridors, stationAttachmentPoints, routeAttachmentPoints, microSegments: allMicroSegments } = parallelData;
+  
+  // Quick dictionary for stations
+  const ST = new Map<string, { id: string; position: LngLat; color: string; passengerCount: number }>(
+    stations.map((s) => [s.id, s])
+  );
+
+  // Generate Route Visualization Data with Pre-calculated Points and Offsets
+  const routeVisualizationData: RouteVisualizationData[] = [];
+
+  // Helper function to find corridor info for a position
+  const findCorridorInfoForPosition = (
+    pos: LngLat,
+    routeId: string
+  ): {
+    bandIndex: number;
+    bandSize: number;
+    spacing: number;
+    direction: { x: number; y: number };
+  } | null => {
+    // Find nearest micro-segment for this route
+    let nearestMicro: MicroSegment | null = null;
+    let minDistance = Infinity;
+
+    const routeMicros = allMicroSegments.filter((m) => m.routeId === routeId);
+
+    for (const micro of routeMicros) {
+      const distance = getDistanceInMeters(pos, micro.centerPos);
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearestMicro = micro;
+      }
+    }
+
+    if (!nearestMicro || minDistance > 50) return null; // Within 50m
+
+    const relevantCorridors = corridors.filter((c) =>
+      c.microSegments.some((m) => m.id === nearestMicro!.id)
+    );
+    if (relevantCorridors.length === 0) return null;
+
+    const corridor = relevantCorridors[0];
+    const routesInCorridor = Array.from(corridor.routes);
+    const bandIndex = routesInCorridor.indexOf(routeId);
+    const bandSize = corridor.routes.size;
+
+    const isDiagonal =
+      Math.abs(
+        Math.abs(corridor.averageDirection.x) -
+          Math.abs(corridor.averageDirection.y)
+      ) < 0.3;
+    const spacing = isDiagonal ? 50 : 25;
+
+    return {
+      bandIndex,
+      bandSize,
+      spacing,
+      direction: corridor.averageDirection,
+    };
+  };
+
+  // Helper function to calculate route offset direction
+  const calculateRouteOffsetDirection = (
+    routeCorridorInfo: { bandIndex: number; bandSize: number; spacing: number; direction: { x: number; y: number } } | null
+  ): { x: number; y: number } | null => {
+    if (!routeCorridorInfo) return null;
+
+    const direction = routeCorridorInfo.direction;
+    // Return perpendicular direction for offset
+    return { x: -direction.y, y: direction.x };
+  };
+
+  for (const route of routes) {
+    if (route.stations.length < 2) continue;
+
+    const routeStations = route.stations.map((id) => ST.get(id)).filter(Boolean);
+    if (routeStations.length < 2) continue;
+
+    // Generate base coordinates for the route
+    const coordinates: LngLat[] = [];
+
+    for (let i = 0; i < routeStations.length - 1; i++) {
+      const start = routeStations[i]!;
+      const end = routeStations[i + 1]!;
+      const metroCoords = createMetroRouteCoordinates(start.position, end.position);
+
+      // Add coordinates, avoiding duplication
+      if (i === 0) {
+        coordinates.push({ lng: metroCoords[0][0], lat: metroCoords[0][1] });
+      }
+
+      for (let j = 1; j < metroCoords.length; j++) {
+        coordinates.push({ lng: metroCoords[j][0], lat: metroCoords[j][1] });
+      }
+    }
+
+    // Pre-calculate all route points with corridor information
+    const routePoints: RoutePoint[] = [];
+    const routeMicros = allMicroSegments.filter((m) => m.routeId === route.id);
+
+    const routeCorridorInfo: { bandIndex: number; bandSize: number; spacing: number; direction: { x: number; y: number } } | null =
+      routeMicros.length > 0
+        ? (() => {
+            const firstMicro = routeMicros[0];
+            const corridorsForMicro = corridors.filter((c) =>
+              c.microSegments.some((m) => m.id === firstMicro.id)
+            );
+            if (corridorsForMicro.length > 0) {
+              const corridor = corridorsForMicro[0];
+              const routesInCorridor = Array.from(corridor.routes);
+              const bandIndex = routesInCorridor.indexOf(route.id);
+              const bandSize = corridor.routes.size;
+              const isDiagonal =
+                Math.abs(
+                  Math.abs(corridor.averageDirection.x) -
+                    Math.abs(corridor.averageDirection.y)
+                ) < 0.3;
+              const spacing = isDiagonal ? 50 : 25;
+              return {
+                bandIndex,
+                bandSize,
+                spacing,
+                direction: corridor.averageDirection,
+              };
+            }
+            return null;
+          })()
+        : null;
+
+    for (let i = 0; i < routeStations.length - 1; i++) {
+      const a = routeStations[i]!, b = routeStations[i + 1]!;
+      const coords = createMetroRouteCoordinates(a.position, b.position);
+
+      const startIndex = i === 0 ? 0 : 1;
+      for (let j = startIndex; j < coords.length; j++) {
+        const [lng, lat] = coords[j];
+        const currentPos = { lng, lat };
+        const mercatorCoord = MercatorCoordinate.fromLngLat([lng, lat], 0);
+        const corridorInfo = findCorridorInfoForPosition(currentPos, route.id);
+
+        routePoints.push({
+          pos: currentPos,
+          mercator: {
+            x: mercatorCoord.x,
+            y: mercatorCoord.y,
+            z: mercatorCoord.z,
+          },
+          segmentIndex: i,
+          pointIndex: j,
+          corridorInfo,
+          isStation:
+            (j === 0 && i === 0) ||
+            (j === coords.length - 1 && i === routeStations.length - 2),
+        });
+      }
+    }
+
+    // Calculate route offset direction
+    const routeOffsetDirection = calculateRouteOffsetDirection(routeCorridorInfo);
+
+    // Pre-calculate final 3D render points with all offsets applied
+    const renderPoints: Array<{ x: number; y: number; z: number }> = [];
+
+    for (const point of routePoints) {
+      const merc = point.mercator;
+      let offsetX = 0, offsetY = 0;
+
+      const corridorInfo = point.corridorInfo;
+      if (corridorInfo && routeOffsetDirection) {
+        const { bandIndex, bandSize, spacing } = corridorInfo;
+        const centeredIdx = bandIndex - (bandSize - 1) / 2;
+        const offsetMeters = centeredIdx * spacing;
+        const metersToMerc = MercatorCoordinate.fromLngLat([point.pos.lng, point.pos.lat], 0).meterInMercatorCoordinateUnits();
+
+        // Apply consistent route-wide offset direction
+        offsetX = routeOffsetDirection.x * offsetMeters * metersToMerc;
+        offsetY = routeOffsetDirection.y * offsetMeters * metersToMerc;
+      }
+
+      const z = merc.z - MercatorCoordinate.fromLngLat([point.pos.lng, point.pos.lat], 0).meterInMercatorCoordinateUnits() * 5;
+      renderPoints.push({
+        x: merc.x + offsetX,
+        y: merc.y + offsetY,
+        z,
+      });
+    }
+
+    // Validate and correct station connections for straight lines and 45-degree diagonals
+    const validateAndCorrectPoints = (
+      points: Array<{ x: number; y: number; z: number }>
+    ): Array<{ x: number; y: number; z: number }> => {
+      if (points.length >= 2) {
+        for (let i = 0; i < points.length - 1; i++) {
+          const dx = points[i + 1].x - points[i].x;
+          const dy = points[i + 1].y - points[i].y;
+          const length = Math.hypot(dx, dy);
+
+          if (length > 0.000001) {
+            const nx = dx / length;
+            const ny = dy / length;
+
+            // Check if this segment follows metro-style routing (horizontal, vertical, or 45-degree diagonal)
+            const isHorizontal = Math.abs(ny) < 0.01;
+            const isVertical = Math.abs(nx) < 0.01;
+            const isDiagonal = Math.abs(Math.abs(nx) - Math.abs(ny)) < 0.01;
+
+            if (!isHorizontal && !isVertical && !isDiagonal) {
+              // Instead of forcing 90-degree corners, snap to the closest valid metro direction
+              const absnx = Math.abs(nx);
+              const absny = Math.abs(ny);
+              
+              // Determine the closest metro-style direction
+              if (absnx > 0.9 && absny < 0.1) {
+                // Nearly horizontal - keep horizontal
+                points[i + 1].y = points[i].y;
+              } else if (absny > 0.9 && absnx < 0.1) {
+                // Nearly vertical - keep vertical  
+                points[i + 1].x = points[i].x;
+              } else {
+                // Not close to horizontal or vertical - snap to 45-degree diagonal
+                const signX = Math.sign(dx);
+                const signY = Math.sign(dy);
+                
+                // Use the smaller component to maintain the diagonal
+                const diagDistance = Math.min(Math.abs(dx), Math.abs(dy));
+                points[i + 1].x = points[i].x + signX * diagDistance;
+                points[i + 1].y = points[i].y + signY * diagDistance;
+              }
+            }
+          }
+        }
+      }
+
+      return points;
+    };
+
+    // Apply geometric validation and correction to render points
+    const finalRenderPoints = validateAndCorrectPoints(renderPoints);
+
+    // Calculate parallel offset based on corridor membership
+    let parallelOffset = 0;
+    const relevantCorridors = corridors.filter((c) => c.routes.has(route.id));
+
+    if (relevantCorridors.length > 0) {
+      // Use the corridor with the most micro-segments for this route
+      const primaryCorridor = relevantCorridors.reduce((a, b) =>
+        a.microSegments.filter((m) => m.routeId === route.id).length >
+        b.microSegments.filter((m) => m.routeId === route.id).length
+          ? a
+          : b
+      );
+
+      // Calculate offset based on position within corridor
+      const routesInCorridor = Array.from(primaryCorridor.routes);
+      const routeIndex = routesInCorridor.indexOf(route.id);
+      const numRoutesInCorridor = routesInCorridor.length;
+
+      if (numRoutesInCorridor > 1) {
+        const PARALLEL_SPACING = 15; // meters between parallel routes
+        const centerOffset = (numRoutesInCorridor - 1) / 2;
+        parallelOffset = (routeIndex - centerOffset) * PARALLEL_SPACING;
+      }
+    }
+
+    const attachmentMap = routeAttachmentPoints.get(route.id) || new Map();
+
+    routeVisualizationData.push({
+      routeId: route.id,
+      coordinates,
+      routePoints,
+      renderPoints: finalRenderPoints,
+      parallelOffset,
+      attachmentPoints: attachmentMap,
+      routeOffsetDirection,
+    });
+  }
+
+  return {
+    routes: routeVisualizationData,
+    corridors,
+    stationAttachmentPoints,
+    routeAttachmentPoints,
+    microSegments: allMicroSegments,
+    lastUpdated: Date.now(),
+  };
 }

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { GameState } from '../types';
+import { useGameStore } from '../store/gameStore';
 
 interface GameUIProps {
   gameState: GameState;
@@ -14,6 +15,7 @@ export default function GameUI({ gameState, onStationSelectFromList }: GameUIPro
   const [showStations, setShowStations] = useState(false);
   const [showInstructions, setShowInstructions] = useState(false);
   const mobile = isMobile();
+  const { useParallelVisualization, toggleVisualization } = useGameStore();
 
   // Helper function to get routes connected to a station
   const getConnectedRoutes = (stationId: string) => {
@@ -46,6 +48,9 @@ export default function GameUI({ gameState, onStationSelectFromList }: GameUIPro
           </button>
           <button onClick={() => setShowInstructions((s) => !s)}>
             Instructions
+          </button>
+          <button onClick={toggleVisualization}>
+            {useParallelVisualization ? 'Simple' : 'Parallel'} View
           </button>
         </div>
         {showStations && (
@@ -158,6 +163,11 @@ export default function GameUI({ gameState, onStationSelectFromList }: GameUIPro
         <div className="instruction-item">
           <span className="instruction-icon">👥</span>
           <span>Trains pick up waiting passengers</span>
+        </div>
+        <div className="visualization-controls">
+          <button onClick={toggleVisualization} className="visualization-toggle">
+            {useParallelVisualization ? 'Switch to Simple View' : 'Switch to Parallel View'}
+          </button>
         </div>
       </div>
     </div>

@@ -6,7 +6,7 @@ import type { LngLat } from '../types'
 import { createStationObject } from '../utils/threeStationFactory'
 import { PERFORMANCE_CONFIG } from '../config/gameConfig'
 import { useGameStore } from '../store/gameStore'
-import { getTrainPositionFromCache } from '../utils/routeNetworkCalculator'
+import { getTrainPositionFromMovementNetwork } from '../utils/routeNetworkCalculator'
 import { getDistanceInMeters } from '../utils/coordinates'
 
 interface GameThreeLayerProps {
@@ -16,7 +16,14 @@ interface GameThreeLayerProps {
 
 const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerProps) => {
   // Get game data and cached route network from store
-  const { stations, routes, trains, cachedRouteNetwork } = useGameStore()
+  const { 
+    stations, 
+    routes, 
+    trains, 
+    trainMovementNetwork, 
+    visualRouteNetwork, 
+    useParallelVisualization 
+  } = useGameStore()
   const mapContext = useMap()
   const layerRef = useRef<any>(null) // eslint-disable-line @typescript-eslint/no-explicit-any
   const raycasterRef = useRef<THREE.Raycaster | null>(null)
@@ -514,37 +521,70 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
       scene.add(stationObj.object3D)
     })
     
-    // Use cached route network data or fallback to empty structure
-    const cachedNetwork = cachedRouteNetwork
-    
-    // Early return if no cached network data available
-    if (!cachedNetwork || routes.length === 0) {
-      return // Skip rendering routes if no cached data
-    }
+    // Route rendering logic
+    if (useParallelVisualization && visualRouteNetwork) {
+      // Use advanced parallel visualization
+      routes.forEach(route => {
+        if (route.stations.length < 2) return
 
-    // Advanced Corridor-Aware Route Rendering Using Cached Data
-    routes.forEach(route => {
-      if (route.stations.length < 2) return
+        // Get cached visual route data for parallel rendering
+        const visualRoute = visualRouteNetwork.routes.find((r) => r.routeId === route.id)
+        if (!visualRoute) return
 
-      // Get cached route data instead of calculating
-      const cachedRoute = cachedNetwork.routes.find(r => r.routeId === route.id)
-      if (!cachedRoute) return
+        // Use pre-calculated render points from visual cache
+        const finalPoints = visualRoute.renderPoints.map((p) => new THREE.Vector3(p.x, p.y, p.z))
 
-      // Use pre-calculated render points from cache (no calculations needed!)
-      const finalPoints = cachedRoute.renderPoints.map(p => new THREE.Vector3(p.x, p.y, p.z))
-      
-      // Create the route line using corrected points
-      const geometry = new THREE.BufferGeometry().setFromPoints(finalPoints)
-      const material = new THREE.LineBasicMaterial({
-        color: route.color,
-        linewidth: 8,
-        transparent: false,
-        opacity: 1.0,
+        // Create the route line using corrected points
+        const geometry = new THREE.BufferGeometry().setFromPoints(finalPoints)
+        const material = new THREE.LineBasicMaterial({
+          color: route.color,
+          linewidth: 6,
+          transparent: true,
+          opacity: 0.8
+        })
+
+        const line = new THREE.Line(geometry, material)
+        line.userData = { type: 'route', routeId: route.id }
+        scene.add(line)
       })
-      const line = new THREE.Line(geometry, material)
-      line.userData = { type: 'route', routeId: route.id }
-      scene.add(line)
-    })
+    } else {
+      // Use simple straight-line rendering for basic visualization
+      routes.forEach(route => {
+        if (route.stations.length < 2) return
+
+        const routeStations = route.stations
+          .map(stationId => stations.find(s => s.id === stationId))
+          .filter(Boolean)
+        
+        if (routeStations.length < 2) return
+
+        // Simple straight lines between stations
+        for (let i = 0; i < routeStations.length - 1; i++) {
+          const start = routeStations[i]!
+          const end = routeStations[i + 1]!
+          
+          const startMercator = MercatorCoordinate.fromLngLat([start.position.lng, start.position.lat], 0)
+          const endMercator = MercatorCoordinate.fromLngLat([end.position.lng, end.position.lat], 0)
+
+          const points = [
+            new THREE.Vector3(startMercator.x, startMercator.y, startMercator.z - 0.000005),
+            new THREE.Vector3(endMercator.x, endMercator.y, endMercator.z - 0.000005)
+          ]
+
+          const geometry = new THREE.BufferGeometry().setFromPoints(points)
+          const material = new THREE.LineBasicMaterial({
+            color: route.color,
+            linewidth: 4,
+            transparent: true,
+            opacity: 0.7
+          })
+
+          const line = new THREE.Line(geometry, material)
+          line.userData = { type: 'route-simple', routeId: route.id }
+          scene.add(line)
+        }
+      })
+    }
     
     // Add trains
     trains.forEach(train => {
@@ -559,8 +599,9 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
       
       if (routeStations.length < 2) return
       
-      // Calculate train position using cached data
-      const trainLngLat = getTrainPositionFromCache(cachedNetwork, train.routeId, train.position)
+      // Calculate train position using train movement network for accurate positioning
+      if (!trainMovementNetwork) return
+      const trainLngLat = getTrainPositionFromMovementNetwork(trainMovementNetwork, train.routeId, train.position)
       const trainMercator = MercatorCoordinate.fromLngLat([trainLngLat.lng, trainLngLat.lat], 0)
       
       const x = trainMercator.x
@@ -689,7 +730,7 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
     }
     
     renderGameObjects()
-  }, [stations, routes, trains, cachedRouteNetwork, selectedStationId])
+  }, [stations, routes, trains, trainMovementNetwork, visualRouteNetwork, useParallelVisualization, selectedStationId])
   
   return null
 }

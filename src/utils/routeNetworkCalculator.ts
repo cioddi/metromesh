@@ -1,23 +1,9 @@
 import { MercatorCoordinate } from "maplibre-gl";
 import type { LngLat, Route } from "../types";
-import {
-  calculateParallelRouteVisualization,
-  type MicroSegment,
-  type Corridor,
-  type AttachmentPoint,
-} from "./parallelRouteVisualizer";
-import { getDistanceInMeters } from "./coordinates";
 
-// Get route's corridor information as fallback for points without individual corridor info
-// Interface for route corridor info used in visualization
-interface RouteCorridorInfo {
-  bandIndex: number;
-  bandSize: number;
-  spacing: number;
-  direction: { x: number; y: number };
-}
+// Core train positioning and movement functions
 
-// Comprehensive metro-style route coordinate generation with perfect straight line guarantees
+// Comprehensive metro-style route coordinate generation
 function createMetroRouteCoordinates(
   start: LngLat,
   target: LngLat
@@ -35,16 +21,15 @@ function createMetroRouteCoordinates(
   // Calculate alignment thresholds in Mercator space
   const meterUnit = startMerc.meterInMercatorCoordinateUnits();
   const alignmentThreshold = 10 * meterUnit; // ~10m threshold
-  // const minStraightSegment = 30 * meterUnit; // Minimum 30m for straight segments (unused)
 
-  // Only allow straight or 45-degree diagonal connections, never a hard 90-degree corner
+  // Only allow straight or 45-degree diagonal connections
   const absDx_m = Math.abs(dx_m);
   const absDy_m = Math.abs(dy_m);
   const signDx = Math.sign(dx_m);
   const signDy = Math.sign(dy_m);
   const diagThreshold = 0.000001;
 
-  // If the two points are nearly aligned horizontally, vertically, or diagonally, draw a straight line
+  // If aligned horizontally, vertically, or diagonally, draw straight line
   const isHorizontal = absDy_m < alignmentThreshold;
   const isVertical = absDx_m < alignmentThreshold;
   const isDiagonal = Math.abs(absDx_m - absDy_m) < alignmentThreshold;
@@ -54,15 +39,14 @@ function createMetroRouteCoordinates(
     return coordinates;
   }
 
-  // Otherwise, always use a 45-degree diagonal as far as possible, then a straight segment
-  // Find the maximum possible diagonal distance (in Mercator units)
+  // Use 45-degree diagonal then straight segment
   const diagComponent = Math.min(absDx_m, absDy_m);
   const diagX = startMerc.x + signDx * diagComponent;
   const diagY = startMerc.y + signDy * diagComponent;
   const diagMerc = new MercatorCoordinate(diagX, diagY, 0);
   const diagLngLat = diagMerc.toLngLat();
 
-  // Add the diagonal point
+  // Add diagonal point
   if (
     Math.abs(diagLngLat.lng - start.lng) > diagThreshold ||
     Math.abs(diagLngLat.lat - start.lat) > diagThreshold
@@ -70,13 +54,8 @@ function createMetroRouteCoordinates(
     coordinates.push([diagLngLat.lng, diagLngLat.lat]);
   }
 
-  // Add the final straight segment to the target
+  // Add final segment to target
   coordinates.push([target.lng, target.lat]);
-
-  // Debug: log the generated coordinates for this segment
-  if (typeof window !== 'undefined' && (window as unknown as { DEBUG_METROMESH_PATHS?: boolean }).DEBUG_METROMESH_PATHS) {
-    console.log('[MetroMesh] Path from', start, 'to', target, '->', coordinates);
-  }
   return coordinates;
 }
 
@@ -160,56 +139,24 @@ function getTrainPositionOnMetroRoute(
     }
   }
 
-  // Fallback to simple interpolation
-  return {
-    lng:
-      startStation.position.lng +
-      (endStation.position.lng - startStation.position.lng) * segmentT,
-    lat:
-      startStation.position.lat +
-      (endStation.position.lat - startStation.position.lat) * segmentT,
-  };
+  // Should not reach here - L-shaped routes handled above
+  return startStation.position;
 }
 
-// Interface definitions for cached route network data
+// Core route network interfaces for train movement
 
-interface RoutePoint {
-  pos: LngLat;
-  mercator: { x: number; y: number; z: number };
-  segmentIndex: number;
-  pointIndex: number;
-  corridorInfo: {
-    bandIndex: number;
-    bandSize: number;
-    spacing: number;
-    direction: { x: number; y: number };
-  } | null;
-  isStation: boolean;
-}
-
-interface RouteVisualizationData {
-  routeId: string;
-  coordinates: LngLat[];
-  routePoints: RoutePoint[];
-  // Pre-calculated 3D points ready for Three.js rendering
-  renderPoints: Array<{ x: number; y: number; z: number }>;
-  parallelOffset: number;
-  attachmentPoints: Map<string, AttachmentPoint>;
-  routeOffsetDirection: { x: number; y: number } | null;
-}
-
-// Main cached route network data structure
-export interface CachedRouteNetwork {
-  routes: RouteVisualizationData[];
-  corridors: Corridor[];
-  stationAttachmentPoints: Map<string, AttachmentPoint[]>;
-  routeAttachmentPoints: Map<string, Map<string, AttachmentPoint>>;
-  microSegments: MicroSegment[];
+// Train movement network data (unmodified routes for accurate train positioning)
+export interface TrainMovementNetwork {
+  routes: Map<string, {
+    routeId: string;
+    stationPositions: LngLat[];  // Original station positions
+    routeCoordinates: LngLat[];  // Unmodified route coordinates for train movement
+  }>;
   lastUpdated: number;
 }
 
-// Main function to calculate the complete route network
-export function calculateRouteNetwork(
+// Main function to calculate the train movement network
+export function calculateTrainMovementNetwork(
   routes: Route[],
   stations: Array<{
     id: string;
@@ -217,348 +164,140 @@ export function calculateRouteNetwork(
     color: string;
     passengerCount: number;
   }>
-): CachedRouteNetwork {
+): TrainMovementNetwork {
   // Quick dictionary for stations
   const ST = new Map<
     string,
     { id: string; position: LngLat; color: string; passengerCount: number }
   >(stations.map((s) => [s.id, s]));
 
-  // Calculate parallel route visualization data using dedicated module
-  const parallelData = calculateParallelRouteVisualization(routes, stations);
-  const {
-    corridors,
-    stationAttachmentPoints,
-    routeAttachmentPoints,
-    microSegments: allMicroSegments,
-  } = parallelData;
-
-  // PHASE 7: Generate Route Visualization Data with Pre-calculated Points and Offsets
-  const routeVisualizationData: RouteVisualizationData[] = [];
-
-  // Helper function to find corridor info for a position
-  const findCorridorInfoForPosition = (
-    pos: LngLat,
-    routeId: string
-  ): {
-    bandIndex: number;
-    bandSize: number;
-    spacing: number;
-    direction: { x: number; y: number };
-  } | null => {
-    // Find nearest micro-segment for this route
-    let nearestMicro: MicroSegment | null = null;
-    let minDistance = Infinity;
-
-    const routeMicros = allMicroSegments.filter((m) => m.routeId === routeId);
-
-    for (const micro of routeMicros) {
-      const distance = getDistanceInMeters(pos, micro.centerPos);
-      if (distance < minDistance) {
-        minDistance = distance;
-        nearestMicro = micro;
-      }
-    }
-
-    if (!nearestMicro || minDistance > 50) return null; // Within 50m
-
-    const relevantCorridors = corridors.filter((c) =>
-      c.microSegments.some((m) => m.id === nearestMicro!.id)
-    );
-    if (relevantCorridors.length === 0) return null;
-
-    const corridor = relevantCorridors[0];
-    const routesInCorridor = Array.from(corridor.routes);
-    const bandIndex = routesInCorridor.indexOf(routeId);
-    const bandSize = corridor.routes.size;
-
-    const isDiagonal =
-      Math.abs(
-        Math.abs(corridor.averageDirection.x) -
-          Math.abs(corridor.averageDirection.y)
-      ) < 0.3;
-    const spacing = isDiagonal ? 50 : 25;
-
-    return {
-      bandIndex,
-      bandSize,
-      spacing,
-      direction: corridor.averageDirection,
-    };
-  };
-
-  // Helper function to calculate route offset direction
-  const calculateRouteOffsetDirection = (
-    routeCorridorInfo: RouteCorridorInfo | null
-  ): { x: number; y: number } | null => {
-    if (!routeCorridorInfo) return null;
-
-    const direction = routeCorridorInfo.direction;
-    // Return perpendicular direction for offset
-    return { x: -direction.y, y: direction.x };
-  };
+  // Generate Train Movement Network (unmodified routes)
+  const trainMovementRoutes = new Map<string, {
+    routeId: string;
+    stationPositions: LngLat[];
+    routeCoordinates: LngLat[];
+  }>();
 
   for (const route of routes) {
     if (route.stations.length < 2) continue;
 
-    const routeStations = route.stations
-      .map((id) => ST.get(id))
-      .filter(Boolean);
+    const routeStations = route.stations.map(id => ST.get(id)).filter(Boolean);
     if (routeStations.length < 2) continue;
 
-    // Generate base coordinates for the route
-    const coordinates: LngLat[] = [];
+    const stationPositions = routeStations.map(s => s!.position);
+    const routeCoordinates: LngLat[] = [];
 
+    // Generate unmodified route coordinates for train movement
     for (let i = 0; i < routeStations.length - 1; i++) {
       const start = routeStations[i]!;
       const end = routeStations[i + 1]!;
-      const metroCoords = createMetroRouteCoordinates(
-        start.position,
-        end.position
-      );
+      const metroCoords = createMetroRouteCoordinates(start.position, end.position);
 
       // Add coordinates, avoiding duplication
       if (i === 0) {
-        coordinates.push({ lng: metroCoords[0][0], lat: metroCoords[0][1] });
+        routeCoordinates.push({ lng: metroCoords[0][0], lat: metroCoords[0][1] });
       }
 
       for (let j = 1; j < metroCoords.length; j++) {
-        coordinates.push({ lng: metroCoords[j][0], lat: metroCoords[j][1] });
+        routeCoordinates.push({ lng: metroCoords[j][0], lat: metroCoords[j][1] });
       }
     }
 
-    // Pre-calculate all route points with corridor information
-    const routePoints: RoutePoint[] = [];
-    const routeMicros = allMicroSegments.filter((m) => m.routeId === route.id);
-
-    const routeCorridorInfo: RouteCorridorInfo | null =
-      routeMicros.length > 0
-        ? (() => {
-            const firstMicro = routeMicros[0];
-            const corridorsForMicro = corridors.filter((c) =>
-              c.microSegments.some((m) => m.id === firstMicro.id)
-            );
-            if (corridorsForMicro.length > 0) {
-              const corridor = corridorsForMicro[0];
-              const routesInCorridor = Array.from(corridor.routes);
-              const bandIndex = routesInCorridor.indexOf(route.id);
-              const bandSize = corridor.routes.size;
-              const isDiagonal =
-                Math.abs(
-                  Math.abs(corridor.averageDirection.x) -
-                    Math.abs(corridor.averageDirection.y)
-                ) < 0.3;
-              const spacing = isDiagonal ? 50 : 25;
-              return {
-                bandIndex,
-                bandSize,
-                spacing,
-                direction: corridor.averageDirection,
-              };
-            }
-            return null;
-          })()
-        : null;
-
-    for (let i = 0; i < routeStations.length - 1; i++) {
-      const a = routeStations[i]!,
-        b = routeStations[i + 1]!;
-      const coords = createMetroRouteCoordinates(a.position, b.position);
-
-      const startIndex = i === 0 ? 0 : 1;
-      for (let j = startIndex; j < coords.length; j++) {
-        const [lng, lat] = coords[j];
-        const currentPos = { lng, lat };
-        const mercatorCoord = MercatorCoordinate.fromLngLat([lng, lat], 0);
-        const corridorInfo = findCorridorInfoForPosition(currentPos, route.id);
-
-        routePoints.push({
-          pos: currentPos,
-          mercator: {
-            x: mercatorCoord.x,
-            y: mercatorCoord.y,
-            z: mercatorCoord.z,
-          },
-          segmentIndex: i,
-          pointIndex: j,
-          corridorInfo,
-          isStation:
-            (j === 0 && i === 0) ||
-            (j === coords.length - 1 && i === routeStations.length - 2),
-        });
-      }
-    }
-
-    // Calculate route offset direction
-    const routeOffsetDirection =
-      calculateRouteOffsetDirection(routeCorridorInfo);
-
-    // Pre-calculate final 3D render points with all offsets applied
-    const renderPoints: Array<{ x: number; y: number; z: number }> = [];
-
-    for (const point of routePoints) {
-      const merc = point.mercator;
-      let offsetX = 0,
-        offsetY = 0;
-
-      const corridorInfo = point.corridorInfo;
-      if (corridorInfo && routeOffsetDirection) {
-        const { bandIndex, bandSize, spacing } = corridorInfo;
-        const centeredIdx = bandIndex - (bandSize - 1) / 2;
-        const offsetMeters = centeredIdx * spacing;
-        const metersToMerc = MercatorCoordinate.fromLngLat(
-          [point.pos.lng, point.pos.lat],
-          0
-        ).meterInMercatorCoordinateUnits();
-
-        // Apply consistent route-wide offset direction
-        offsetX = routeOffsetDirection.x * offsetMeters * metersToMerc;
-        offsetY = routeOffsetDirection.y * offsetMeters * metersToMerc;
-      }
-
-      const z =
-        merc.z -
-        MercatorCoordinate.fromLngLat(
-          [point.pos.lng, point.pos.lat],
-          0
-        ).meterInMercatorCoordinateUnits() *
-          5;
-      renderPoints.push({
-        x: merc.x + offsetX,
-        y: merc.y + offsetY,
-        z,
-      });
-    }
-
-    // Validate and correct station connections for straight lines
-    const validateAndCorrectPoints = (
-      points: Array<{ x: number; y: number; z: number }>
-    ): Array<{ x: number; y: number; z: number }> => {
-      if (points.length >= 2) {
-        for (let i = 0; i < points.length - 1; i++) {
-          const dx = points[i + 1].x - points[i].x;
-          const dy = points[i + 1].y - points[i].y;
-          const length = Math.hypot(dx, dy);
-
-          if (length > 0.000001) {
-            const nx = dx / length;
-            const ny = dy / length;
-
-            // Check if this segment is straight
-            const isHorizontal = Math.abs(ny) < 0.01;
-            const isVertical = Math.abs(nx) < 0.01;
-            const isDiagonal = Math.abs(Math.abs(nx) - Math.abs(ny)) < 0.01;
-
-            if (!isHorizontal && !isVertical && !isDiagonal) {
-              console.warn(
-                `Route ${route.id} segment ${i} corrected to maintain straight line`
-              );
-
-              // Force correction by snapping to nearest valid direction
-              if (Math.abs(nx) > Math.abs(ny)) {
-                // More horizontal - force horizontal
-                points[i + 1].y = points[i].y;
-              } else {
-                // More vertical - force vertical
-                points[i + 1].x = points[i].x;
-              }
-            }
-          }
-        }
-      }
-
-      return points;
-    };
-
-    // Apply geometric validation and correction to render points
-    const finalRenderPoints = validateAndCorrectPoints(renderPoints);
-
-    // Calculate parallel offset based on corridor membership
-    let parallelOffset = 0;
-    const relevantCorridors = corridors.filter((c) => c.routes.has(route.id));
-
-    if (relevantCorridors.length > 0) {
-      // Use the corridor with the most micro-segments for this route
-      const primaryCorridor = relevantCorridors.reduce((a, b) =>
-        a.microSegments.filter((m) => m.routeId === route.id).length >
-        b.microSegments.filter((m) => m.routeId === route.id).length
-          ? a
-          : b
-      );
-
-      // Calculate offset based on position within corridor
-      const routesInCorridor = Array.from(primaryCorridor.routes);
-      const routeIndex = routesInCorridor.indexOf(route.id);
-      const numRoutesInCorridor = routesInCorridor.length;
-
-      if (numRoutesInCorridor > 1) {
-        const PARALLEL_SPACING = 15; // meters between parallel routes
-        const centerOffset = (numRoutesInCorridor - 1) / 2;
-        parallelOffset = (routeIndex - centerOffset) * PARALLEL_SPACING;
-      }
-    }
-
-    const attachmentMap = routeAttachmentPoints.get(route.id) || new Map();
-
-    routeVisualizationData.push({
+    trainMovementRoutes.set(route.id, {
       routeId: route.id,
-      coordinates,
-      routePoints,
-      renderPoints: finalRenderPoints,
-      parallelOffset,
-      attachmentPoints: attachmentMap,
-      routeOffsetDirection,
+      stationPositions,
+      routeCoordinates
     });
   }
 
   return {
-    routes: routeVisualizationData,
-    corridors,
-    stationAttachmentPoints,
-    routeAttachmentPoints,
-    microSegments: allMicroSegments,
+    routes: trainMovementRoutes,
     lastUpdated: Date.now(),
   };
 }
 
-// Helper function to get train position from cached route data
-export function getTrainPositionFromCache(
-  cachedNetwork: CachedRouteNetwork,
+// Helper function to get train position from train movement network
+export function getTrainPositionFromMovementNetwork(
+  trainMovementNetwork: TrainMovementNetwork,
   routeId: string,
   trainPosition: number
 ): LngLat {
-  // Find the cached route data
-  const routeData = cachedNetwork.routes.find((r) => r.routeId === routeId);
-  if (!routeData || routeData.coordinates.length === 0) {
+  // Find the train movement route data
+  const movementRoute = trainMovementNetwork.routes.get(routeId);
+  if (!movementRoute || movementRoute.stationPositions.length < 2) {
     return { lng: 0, lat: 0 };
   }
 
-  // Use the pre-calculated coordinates for position interpolation
-  const coordinates = routeData.coordinates;
-  const clampedPosition = Math.max(
-    0,
-    Math.min(trainPosition, coordinates.length - 1)
-  );
-
-  if (coordinates.length <= 1) {
-    return coordinates[0] || { lng: 0, lat: 0 };
-  }
-
+  const stationPositions = movementRoute.stationPositions;
+  
+  // trainPosition is relative to station segments (e.g., 0.5 = halfway between stations 0 and 1)
+  const clampedPosition = Math.max(0, Math.min(trainPosition, stationPositions.length - 1));
   const segmentIndex = Math.floor(clampedPosition);
   const segmentT = clampedPosition - segmentIndex;
 
-  if (segmentIndex >= coordinates.length - 1) {
-    return coordinates[coordinates.length - 1];
+  // Handle edge case where we're at the last station
+  if (segmentIndex >= stationPositions.length - 1) {
+    return stationPositions[stationPositions.length - 1];
   }
 
-  const startCoord = coordinates[segmentIndex];
-  const endCoord = coordinates[segmentIndex + 1];
+  const startStation = stationPositions[segmentIndex];
+  const endStation = stationPositions[segmentIndex + 1];
 
-  return {
-    lng: startCoord.lng + (endCoord.lng - startCoord.lng) * segmentT,
-    lat: startCoord.lat + (endCoord.lat - startCoord.lat) * segmentT,
-  };
+  // Use the original metro route coordinate generation for accurate train positioning
+  const metroCoords = createMetroRouteCoordinates(startStation, endStation);
+
+  if (metroCoords.length === 2) {
+    // Direct route - simple interpolation
+    const startCoord = metroCoords[0];
+    const endCoord = metroCoords[1];
+    return {
+      lng: startCoord[0] + (endCoord[0] - startCoord[0]) * segmentT,
+      lat: startCoord[1] + (endCoord[1] - startCoord[1]) * segmentT,
+    };
+  } else if (metroCoords.length === 3) {
+    // L-shaped route with corner - need to calculate which segment we're on
+    const startCoord = metroCoords[0];
+    const cornerCoord = metroCoords[1];
+    const endCoord = metroCoords[2];
+
+    // Calculate distances of each segment
+    const seg1Distance = Math.hypot(
+      cornerCoord[0] - startCoord[0],
+      cornerCoord[1] - startCoord[1]
+    );
+    const seg2Distance = Math.hypot(
+      endCoord[0] - cornerCoord[0],
+      endCoord[1] - cornerCoord[1]
+    );
+    const totalDistance = seg1Distance + seg2Distance;
+
+    if (totalDistance === 0) {
+      return startStation;
+    }
+
+    const distanceAlongRoute = segmentT * totalDistance;
+
+    if (distanceAlongRoute <= seg1Distance) {
+      // On first segment (diagonal)
+      const subSegmentT = seg1Distance > 0 ? distanceAlongRoute / seg1Distance : 0;
+      return {
+        lng: startCoord[0] + (cornerCoord[0] - startCoord[0]) * subSegmentT,
+        lat: startCoord[1] + (cornerCoord[1] - startCoord[1]) * subSegmentT,
+      };
+    } else {
+      // On second segment (straight)
+      const remainingDistance = distanceAlongRoute - seg1Distance;
+      const subSegmentT = seg2Distance > 0 ? remainingDistance / seg2Distance : 0;
+      return {
+        lng: cornerCoord[0] + (endCoord[0] - cornerCoord[0]) * subSegmentT,
+        lat: cornerCoord[1] + (endCoord[1] - cornerCoord[1]) * subSegmentT,
+      };
+    }
+  }
+
+  // Should not reach here - L-shaped routes handled above
+  return startStation;
 }
 
-// Export helper functions that might be needed by the rendering layer
+// Export helper functions that might be needed by other modules
 export { createMetroRouteCoordinates, getTrainPositionOnMetroRoute };

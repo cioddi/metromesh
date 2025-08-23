@@ -128,12 +128,8 @@ export function generateRandomPosition(
     }
   }
   
-  // Fallback: return a random position (better than no station)
-  console.log(`⚠️ Fallback positioning for ${isInitialStation ? 'initial' : 'regular'} station after ${MAX_ATTEMPTS} attempts`);
-  return {
-    lng: useBounds.southwest.lng + Math.random() * boundsWidth,
-    lat: useBounds.southwest.lat + Math.random() * boundsHeight
-  };
+  // No valid position found after maximum attempts
+  throw new Error(`Failed to find valid station position after ${MAX_ATTEMPTS} attempts`);
 }
 
 // Initial stations are now randomly generated using generateRandomPosition function

@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import type { LngLat } from '../types'
-import { generateRandomPosition, TRAIN_CONFIG } from '../config/gameConfig'
-import { calculateRouteNetwork, type CachedRouteNetwork } from '../utils/routeNetworkCalculator'
+import { generateRandomPosition, TRAIN_CONFIG, calculateDistance } from '../config/gameConfig'
+import { calculateTrainMovementNetwork, type TrainMovementNetwork } from '../utils/routeNetworkCalculator'
+import { calculateParallelRouteVisualization, generateVisualRouteNetwork, type VisualRouteNetwork } from '../utils/parallelRouteVisualizer'
 
 interface Station {
   id: string
@@ -48,7 +49,11 @@ interface GameState {
   } | null
   gameStartTime: number
   lastStationSpawnTime: number
-  cachedRouteNetwork: CachedRouteNetwork | null
+  // Dual caching system - completely separate networks
+  trainMovementNetwork: TrainMovementNetwork | null
+  visualRouteNetwork: VisualRouteNetwork | null
+  // Visualization toggle
+  useParallelVisualization: boolean
 }
 
 interface GameActions {
@@ -60,7 +65,10 @@ interface GameActions {
   addPassengerToStation: (stationId: string) => void
   selectStation: (stationId: string | null) => void
   triggerGameOver: (reason: string) => void
-  updateRouteNetworkCache: () => void
+  // Dual caching system actions
+  updateTrainMovementNetwork: () => void
+  updateVisualRouteNetwork: () => void
+  toggleVisualization: () => void
 }
 
 const STATION_COLORS = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24', '#f0932b', '#eb4d4b', '#6c5ce7', '#a29bfe']
@@ -82,7 +90,11 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   gameOverStats: null,
   gameStartTime: Date.now(),
   lastStationSpawnTime: Date.now(),
-  cachedRouteNetwork: null,
+  // Dual caching system - completely separate networks
+  trainMovementNetwork: null,
+  visualRouteNetwork: null,
+  // Default to parallel visualization (can be toggled)
+  useParallelVisualization: true,
 
   // Actions
   addStation: (position, waterCheckFn, transportationDensityFn, isInitialStation = false, bounds) => {
@@ -136,8 +148,9 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       trains: [...state.trains, newTrain]
     })
     
-    // Update route network cache after adding new route
-    get().updateRouteNetworkCache()
+    // Update both networks after adding new route
+    get().updateTrainMovementNetwork()
+    get().updateVisualRouteNetwork()
   },
 
   extendRoute: (routeId, newStationId, atEnd) => {
@@ -176,8 +189,9 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       })
     })
     
-    // Update route network cache after extending route
-    get().updateRouteNetworkCache()
+    // Update both networks after extending route
+    get().updateTrainMovementNetwork()
+    get().updateVisualRouteNetwork()
   },
 
   updateTrainPositions: () => {
@@ -188,29 +202,22 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
 
     const updatedTrains = state.trains.map(train => {
       const route = state.routes.find(r => r.id === train.routeId)
-      const cachedNetwork = state.cachedRouteNetwork;
-      const cachedRoute = cachedNetwork?.routes.find(r => r.routeId === train.routeId)
-      const coordinates = cachedRoute?.coordinates || [];
+      
+      // Use train movement network for position calculations
+      const trainMovementNetwork = state.trainMovementNetwork;
+      const movementRoute = trainMovementNetwork?.routes.get(train.routeId);
+      const coordinates = movementRoute?.routeCoordinates || [];
+      
       if (!route || coordinates.length < 2) return train
 
-      // Calculate movement speed based on actual distance between current coordinates
-      const currentCoordIdx = Math.floor(train.position)
-      const nextCoordIdx = Math.min(currentCoordIdx + 1, coordinates.length - 1)
-
-      const currentCoord = coordinates[currentCoordIdx]
-      const nextCoord = coordinates[nextCoordIdx]
-
-      let speedPerLoop = 0.005 // Default fallback speed
-      if (currentCoord && nextCoord && (currentCoord.lng !== nextCoord.lng || currentCoord.lat !== nextCoord.lat)) {
-        // Calculate actual distance between these two coordinates (in degrees)
-        const deltaLng = nextCoord.lng - currentCoord.lng
-        const deltaLat = nextCoord.lat - currentCoord.lat
-        const actualDistance = Math.sqrt(deltaLng * deltaLng + deltaLat * deltaLat)
-        // Normalize speed: longer distances should take proportionally longer
-        const baseSpeedPerSecond = 0.003 // degrees per second (10x faster)
-        const baseSpeedPerLoop = baseSpeedPerSecond * 0.1 // 100ms loops
-        speedPerLoop = baseSpeedPerLoop / Math.max(0.0001, actualDistance)
-      }
+      // REALISTIC METRO SIMULATION MOVEMENT SYSTEM
+      // Use configured train speed for accurate simulation
+      const speedKmh = train.speedKmh || TRAIN_CONFIG.defaultSpeedKmh;
+      const speedMs = speedKmh / 3.6; // Convert km/h to m/s
+      const gameLoopInterval = 100; // milliseconds
+      
+      const stationPositions = movementRoute?.stationPositions || [];
+      if (stationPositions.length < 2) return train; // Need at least 2 stations
 
       let newPosition = train.position
       let newDirection = train.direction
@@ -220,25 +227,24 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
 
       // Check if route is circular (first and last station are the same)
       const isCircularRoute = route.stations.length > 2 && route.stations[0] === route.stations[route.stations.length - 1]
+      const maxPosition = stationPositions.length - 1;
 
-      // Find which coordinates correspond to stations
-      const stationCoordIndices = route.stations.map(stationId => coordinates.findIndex(c => c.lng === (state.stations.find(s => s.id === stationId)?.position.lng) && c.lat === (state.stations.find(s => s.id === stationId)?.position.lat)))
+      // We'll calculate segment indices as needed below
 
-      // Check if train is at a station coordinate (within 0.01 units for precision)
-      const currentCoordIndex = Math.round(train.position)
-      const stationIndexAtCoord = stationCoordIndices.indexOf(currentCoordIndex)
-      const distanceToStation = Math.abs(train.position - currentCoordIndex)
+      // Check if train is very close to a station (within 0.02 units)
+      const nearestStationIndex = Math.round(train.position);
+      const distanceToNearestStation = Math.abs(train.position - nearestStationIndex);
+      const isAtStation = distanceToNearestStation < 0.02;
 
-      if (distanceToStation < 0.01 && stationIndexAtCoord !== -1) {
-        // Train is at a station
-        if (newWaitTime <= 0 && currentCoordIndex !== train.lastStationVisited) {
-          // Just arrived at a NEW station - handle passengers
-          const stationId = route.stations[stationIndexAtCoord]
-          // Score points for delivered passengers
-          newScore += train.passengerCount * 10
-          // All passengers get off
-          newPassengerCount = 0
-          // Pick up new passengers from station
+      // Handle station stops and passenger exchange
+      if (isAtStation && nearestStationIndex !== train.lastStationVisited && nearestStationIndex >= 0 && nearestStationIndex < stationPositions.length) {
+        if (newWaitTime <= 0) {
+          // Just arrived - handle passengers
+          const stationId = route.stations[nearestStationIndex]
+          newScore += train.passengerCount * 10 // Score for delivered passengers
+          newPassengerCount = 0 // All passengers get off
+          
+          // Pick up new passengers
           const station = state.stations.find(s => s.id === stationId)
           if (station && station.passengerCount > 0) {
             const pickupCount = Math.min(station.passengerCount, train.capacity)
@@ -257,36 +263,51 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
               })
             })
           }
-          // Start waiting and mark this station as visited
+          
           newWaitTime = 10 // Wait for 1 second
-          newLastStationVisited = currentCoordIndex
-        } else if (newWaitTime > 0) {
-          newWaitTime--
+          newLastStationVisited = nearestStationIndex
         } else {
-          newPosition = train.position + speedPerLoop * train.direction * state.gameSpeed
+          // Still waiting at station
+          newWaitTime--
         }
+      } else if (newWaitTime > 0) {
+        // Continue waiting at station
+        newWaitTime--
       } else {
-        // Not at a station - move normally and reset wait time
-        newPosition = train.position + speedPerLoop * train.direction * state.gameSpeed
-        newWaitTime = 0
-        // Reset lastStationVisited when train moves away from a station
-        if (currentCoordIndex !== train.lastStationVisited) {
-          newLastStationVisited = -1
+        // Normal movement between stations
+        newLastStationVisited = -1; // Reset when actively moving
+        
+        // Calculate movement step based on realistic train speed
+        const speedMeterPerLoop = speedMs * (gameLoopInterval / 1000);
+        
+        // For non-circular routes, calculate average distance between adjacent stations
+        let totalRouteDistance = 0;
+        for (let i = 0; i < stationPositions.length - 1; i++) {
+          totalRouteDistance += calculateDistance(stationPositions[i], stationPositions[i + 1]);
         }
-        // Handle boundaries based on route type
+        const avgSegmentDistance = totalRouteDistance / Math.max(1, stationPositions.length - 1);
+        
+        // Convert speed to position units per loop
+        const positionProgressPerLoop = avgSegmentDistance > 0 ? speedMeterPerLoop / avgSegmentDistance : 0.01;
+        
+        // Apply movement
+        newPosition = train.position + positionProgressPerLoop * train.direction * state.gameSpeed;
+        
+        // Handle route boundaries
         if (isCircularRoute) {
-          if (newPosition >= coordinates.length - 1) {
-            newPosition = 0
+          if (newPosition >= maxPosition) {
+            newPosition = 0;
           } else if (newPosition < 0) {
-            newPosition = coordinates.length - 2
+            newPosition = maxPosition - 0.01;
           }
         } else {
-          if (newPosition >= coordinates.length - 1) {
-            newPosition = coordinates.length - 1
-            newDirection = -1
+          // Non-circular route: reverse direction at endpoints
+          if (newPosition >= maxPosition) {
+            newPosition = maxPosition;
+            newDirection = -1;
           } else if (newPosition <= 0) {
-            newPosition = 0
-            newDirection = 1
+            newPosition = 0;
+            newDirection = 1;
           }
         }
       }
@@ -355,7 +376,11 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       gameOverStats: null,
       gameStartTime: Date.now(),
       lastStationSpawnTime: Date.now(),
-      cachedRouteNetwork: null
+      // Reset both networks
+      trainMovementNetwork: null,
+      visualRouteNetwork: null,
+      // Keep visualization preference
+      useParallelVisualization: true
     })
   },
 
@@ -380,22 +405,47 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     })
   },
 
-  updateRouteNetworkCache: () => {
+  updateTrainMovementNetwork: () => {
     const state = get()
     
     // Only calculate if we have routes
     if (state.routes.length === 0) {
-      set({ cachedRouteNetwork: null })
+      set({ trainMovementNetwork: null })
       return
     }
     
-    // Calculate the complete route network with all parallel line visualizations
+    // Calculate train movement network for accurate physics
     try {
-      const cachedNetwork = calculateRouteNetwork(state.routes, state.stations)
-      set({ cachedRouteNetwork: cachedNetwork })
+      const trainNetwork = calculateTrainMovementNetwork(state.routes, state.stations)
+      set({ trainMovementNetwork: trainNetwork })
     } catch (error) {
-      console.error('Failed to calculate route network:', error)
-      set({ cachedRouteNetwork: null })
+      console.error('Failed to calculate train movement network:', error)
+      set({ trainMovementNetwork: null })
     }
+  },
+
+  updateVisualRouteNetwork: () => {
+    const state = get()
+    
+    // Only calculate if we have routes
+    if (state.routes.length === 0) {
+      set({ visualRouteNetwork: null })
+      return
+    }
+    
+    // Calculate visual route network for rendering
+    try {
+      const parallelData = calculateParallelRouteVisualization(state.routes, state.stations)
+      const visualNetwork = generateVisualRouteNetwork(state.routes, state.stations, parallelData)
+      set({ visualRouteNetwork: visualNetwork })
+    } catch (error) {
+      console.error('Failed to calculate visual route network:', error)
+      set({ visualRouteNetwork: null })
+    }
+  },
+
+  toggleVisualization: () => {
+    const state = get()
+    set({ useParallelVisualization: !state.useParallelVisualization })
   }
 }))
