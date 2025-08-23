@@ -92,6 +92,9 @@ export interface AttachmentPoint {
   angle: number // In radians
   occupied: boolean
   routeId?: string
+  layer: number // Octagonal layer (0 = innermost, 7 = outermost)
+  side: number // Octagonal side (0-7, 0 = East, increments counter-clockwise)
+  priority: number // Priority score for assignment (higher = preferred)
 }
 
 interface SpatialCell {
@@ -471,69 +474,59 @@ export function calculateParallelRouteVisualization(
   detectParallelism(MEDIUM_PROXIMITY_METERS, STRICT_PARALLEL_THRESHOLD, 2) // Medium confidence  
   detectParallelism(FAR_PROXIMITY_METERS, LOOSE_PARALLEL_THRESHOLD, 1) // Low confidence
 
-  // PHASE 4: Revolutionary Station Attachment Grid System
+  // PHASE 4: Octagonal Multi-Layer Attachment Point System
   const stationAttachmentPoints = new Map<string, AttachmentPoint[]>()
-  const ATTACHMENT_DISTANCE_METERS = 40 // Distance from station center
   
-  // Generate attachment grids for each station
+  // Octagonal system: 8 sides × 8 layers = 64 clean attachment points per station
+  const OCTAGONAL_SIDES = 8
+  const ATTACHMENT_LAYERS = 8
+  const BASE_DISTANCE_METERS = 25 // Base distance from station center
+  const LAYER_INCREMENT_METERS = 15 // Distance between layers
+  
+  // Generate octagonal attachment grids for each station
   for (const station of stations) {
     const points: AttachmentPoint[] = []
     let pointId = 0
     
-    // Primary grid: 8 cardinal and ordinal directions (0°, 45°, 90°, 135°, 180°, 225°, 270°, 315°)
-    for (let i = 0; i < 8; i++) {
-      const angle = (i * Math.PI) / 4 // 45-degree increments
-      const direction = { x: Math.cos(angle), y: Math.sin(angle) }
+    // Create 8 layers of octagonal attachment points
+    for (let layer = 0; layer < ATTACHMENT_LAYERS; layer++) {
+      const layerDistance = BASE_DISTANCE_METERS + (layer * LAYER_INCREMENT_METERS)
       
-      // Convert to geographic coordinates
-      const stationMerc = MercatorCoordinate.fromLngLat([station.position.lng, station.position.lat], 0)
-      const offsetMeters = ATTACHMENT_DISTANCE_METERS * stationMerc.meterInMercatorCoordinateUnits()
-      const attachmentMerc = new MercatorCoordinate(
-        stationMerc.x + direction.x * offsetMeters,
-        stationMerc.y + direction.y * offsetMeters,
-        0
-      )
-      const attachmentPos = attachmentMerc.toLngLat()
-      
-      points.push({
-        id: `${station.id}-attach-${pointId++}`,
-        stationId: station.id,
-        position: { lng: attachmentPos.lng, lat: attachmentPos.lat },
-        direction,
-        angle,
-        occupied: false
-      })
+      // 8 sides of the octagon (cardinal + ordinal directions)
+      for (let side = 0; side < OCTAGONAL_SIDES; side++) {
+        const angle = (side * Math.PI) / 4 // 45-degree increments for perfect octagon
+        const direction = { x: Math.cos(angle), y: Math.sin(angle) }
+        
+        // Convert to geographic coordinates with layer-specific distance
+        const stationMerc = MercatorCoordinate.fromLngLat([station.position.lng, station.position.lat], 0)
+        const offsetMeters = layerDistance * stationMerc.meterInMercatorCoordinateUnits()
+        const attachmentMerc = new MercatorCoordinate(
+          stationMerc.x + direction.x * offsetMeters,
+          stationMerc.y + direction.y * offsetMeters,
+          0
+        )
+        const attachmentPos = attachmentMerc.toLngLat()
+        
+        points.push({
+          id: `${station.id}-oct-L${layer}-S${side}-${pointId++}`,
+          stationId: station.id,
+          position: { lng: attachmentPos.lng, lat: attachmentPos.lat },
+          direction,
+          angle,
+          occupied: false,
+          layer: layer,
+          side: side,
+          priority: layer === 0 ? 100 : (100 - layer * 10) // Inner layers get priority
+        })
+      }
     }
     
-    // Secondary grid: 16 more precise directions (22.5-degree increments)
-    for (let i = 0; i < 16; i++) {
-      const angle = (i * Math.PI) / 8 // 22.5-degree increments  
-      // Skip angles already covered by primary grid
-      if (i % 2 === 0) continue
-      
-      const direction = { x: Math.cos(angle), y: Math.sin(angle) }
-      
-      const stationMerc = MercatorCoordinate.fromLngLat([station.position.lng, station.position.lat], 0)
-      const offsetMeters = ATTACHMENT_DISTANCE_METERS * stationMerc.meterInMercatorCoordinateUnits()
-      const attachmentMerc = new MercatorCoordinate(
-        stationMerc.x + direction.x * offsetMeters,
-        stationMerc.y + direction.y * offsetMeters,
-        0
-      )
-      const attachmentPos = attachmentMerc.toLngLat()
-      
-      points.push({
-        id: `${station.id}-attach-${pointId++}`,
-        stationId: station.id,
-        position: { lng: attachmentPos.lng, lat: attachmentPos.lat },
-        direction,
-        angle,
-        occupied: false
-      })
-    }
+    // Sort by layer first (inner to outer), then by angle
+    points.sort((a, b) => {
+      if (a.layer !== b.layer) return a.layer - b.layer
+      return a.angle - b.angle
+    })
     
-    // Sort by angle for easier access
-    points.sort((a, b) => a.angle - b.angle)
     stationAttachmentPoints.set(station.id, points)
   }
 
@@ -595,23 +588,49 @@ export function calculateParallelRouteVisualization(
         preferredDirection = len > 0 ? { x: dx / len, y: dy / len } : null
       }
       
-      // Score attachment points based on alignment and availability
+      // Score attachment points using octagonal system priorities
       for (const point of attachmentPoints) {
         let score = 0
         
-        // Prefer unoccupied points
-        if (!point.occupied) score += 100
-        
-        // Prefer points aligned with route direction
-        if (preferredDirection) {
-          const alignment = point.direction.x * preferredDirection.x + point.direction.y * preferredDirection.y
-          score += alignment * 50 // Up to 50 bonus points for perfect alignment
+        // Base availability score
+        if (!point.occupied) {
+          score += 1000 // High base score for available points
+        } else {
+          continue // Skip occupied points entirely in octagonal system
         }
         
-        // Prefer standard metro directions (cardinal + ordinal)
-        const standardAngles = [0, Math.PI/4, Math.PI/2, 3*Math.PI/4, Math.PI, 5*Math.PI/4, 3*Math.PI/2, 7*Math.PI/4]
-        const isStandardAngle = standardAngles.some(angle => Math.abs(point.angle - angle) < 0.01)
-        if (isStandardAngle) score += 25
+        // Layer priority (inner layers strongly preferred)
+        score += point.priority
+        
+        // Direction alignment bonus
+        if (preferredDirection) {
+          const alignment = point.direction.x * preferredDirection.x + point.direction.y * preferredDirection.y
+          score += alignment * 100 // Strong alignment bonus
+        }
+        
+        // Octagonal sides are inherently clean metro directions (every 45°)
+        // All octagonal points get this bonus automatically
+        score += 50
+        
+        // Prefer points that maintain route straightness (same side preference)
+        if (i > 0) {
+          const prevStation = routeStations[i - 1]!
+          const prevAttachment = routeMap.get(prevStation.id)
+          if (prevAttachment && prevAttachment.side === point.side) {
+            score += 75 // Bonus for maintaining same octagonal side
+          }
+        }
+        
+        // Anti-crossing logic for complex networks
+        // Prefer outer layers when station already has many routes to reduce crossings
+        const existingRoutesOnStation = attachmentPoints.filter(p => p.occupied).length
+        if (existingRoutesOnStation >= 4) {
+          // For busy stations, prefer outer layers to avoid congestion
+          score += (point.layer * 10) // Outer layers get bonus for busy stations
+        } else {
+          // For less busy stations, prefer inner layers for efficiency
+          score += ((ATTACHMENT_LAYERS - 1 - point.layer) * 5)
+        }
         
         if (score > bestScore) {
           bestScore = score
@@ -623,6 +642,11 @@ export function calculateParallelRouteVisualization(
         bestPoint.occupied = true
         bestPoint.routeId = route.id
         routeMap.set(station.id, bestPoint)
+        
+        // Debug output for octagonal system
+        if (typeof window !== 'undefined' && (window as unknown as { DEBUG_METROMESH_OCTAGON?: boolean }).DEBUG_METROMESH_OCTAGON) {
+          console.log(`[MetroMesh] Route ${route.id} attached to station ${station.id} at Layer ${bestPoint.layer}, Side ${bestPoint.side} (angle: ${(bestPoint.angle * 180 / Math.PI).toFixed(1)}°, score: ${bestScore})`)
+        }
       }
     }
     
