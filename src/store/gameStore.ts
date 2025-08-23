@@ -363,6 +363,35 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   },
 
   resetGame: () => {
+    const state = get();
+    
+    // Properly clear complex network data structures before resetting
+    if (state.trainMovementNetwork) {
+      // Clear Maps in train movement network
+      if (state.trainMovementNetwork.routes) {
+        state.trainMovementNetwork.routes.clear();
+      }
+    }
+    
+    if (state.visualRouteNetwork) {
+      // Clear arrays and Maps in visual route network
+      if (state.visualRouteNetwork.routes) {
+        state.visualRouteNetwork.routes.length = 0;
+      }
+      if (state.visualRouteNetwork.corridors) {
+        state.visualRouteNetwork.corridors.length = 0;
+      }
+      if (state.visualRouteNetwork.microSegments) {
+        state.visualRouteNetwork.microSegments.length = 0;
+      }
+      if (state.visualRouteNetwork.stationAttachmentPoints) {
+        state.visualRouteNetwork.stationAttachmentPoints.clear();
+      }
+      if (state.visualRouteNetwork.routeAttachmentPoints) {
+        state.visualRouteNetwork.routeAttachmentPoints.clear();
+      }
+    }
+    
     set({
       stations: [],
       routes: [],
@@ -376,7 +405,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       gameOverStats: null,
       gameStartTime: Date.now(),
       lastStationSpawnTime: Date.now(),
-      // Reset both networks
+      // Now safely set to null after clearing
       trainMovementNetwork: null,
       visualRouteNetwork: null,
       // Keep visualization preference

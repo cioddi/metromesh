@@ -296,23 +296,21 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
     const gameObjects = scene.children.filter((child: THREE.Object3D) => 
       child.userData && ['station', 'route', 'route-simple', 'train', 'passenger', 'passengers', 'selection-ring', 'unconnected-ring', 'distress-particle', 'distress-glow'].includes(child.userData.type)
     )
-    gameObjects.forEach((obj: THREE.Object3D) => {
-      scene.remove(obj)
-      // Dispose of geometries and materials for objects that don't use shared resources
-      const sharedTypes = ['passenger', 'passengers', 'selection-ring', 'unconnected-ring', 'distress-particle', 'distress-glow']
-      if (obj instanceof THREE.Mesh && !sharedTypes.includes(obj.userData.type)) {
-        // Only dispose if not using shared geometry/material
+    // Recursively dispose all Three.js objects with complete cleanup
+    const disposeObject = (obj: THREE.Object3D) => {
+      // Traverse children first
+      const children = [...obj.children]; // Clone array to avoid modification during iteration
+      children.forEach(child => disposeObject(child));
+      
+      if (obj instanceof THREE.Mesh) {
+        // Check if this is using shared resources
         const sharedGeometries = [
           sharedGeometriesRef.current.passengerGeometry,
           sharedGeometriesRef.current.trainPassengerGeometry,
           sharedGeometriesRef.current.selectionRingGeometry,
           sharedGeometriesRef.current.unconnectedRingGeometry,
           sharedGeometriesRef.current.distressParticleGeometry
-        ]
-        
-        if (!sharedGeometries.includes(obj.geometry as any)) { // eslint-disable-line @typescript-eslint/no-explicit-any
-          obj.geometry.dispose()
-        }
+        ].filter(Boolean); // Remove undefined values
         
         const sharedMaterials = [
           sharedGeometriesRef.current.passengerMaterial,
@@ -320,19 +318,40 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
           sharedGeometriesRef.current.selectionRingMaterial,
           sharedGeometriesRef.current.unconnectedRingMaterial,
           sharedGeometriesRef.current.distressParticleMaterial
-        ]
+        ].filter(Boolean); // Remove undefined values
         
-        if (Array.isArray(obj.material)) {
-          obj.material.forEach(mat => {
-            if (!sharedMaterials.includes(mat as any)) { // eslint-disable-line @typescript-eslint/no-explicit-any
-              mat.dispose()
-            }
-          })
-        } else if (!sharedMaterials.includes(obj.material as any)) { // eslint-disable-line @typescript-eslint/no-explicit-any
-          obj.material.dispose()
+        // Dispose geometry if not shared
+        if (obj.geometry && !sharedGeometries.includes(obj.geometry as any)) {
+          obj.geometry.dispose();
+        }
+        
+        // Dispose materials if not shared
+        if (obj.material) {
+          if (Array.isArray(obj.material)) {
+            obj.material.forEach(mat => {
+              if (mat && !sharedMaterials.includes(mat as any)) {
+                if (mat.map) mat.map.dispose(); // Dispose textures
+                if (mat.normalMap) mat.normalMap.dispose();
+                if (mat.emissiveMap) mat.emissiveMap.dispose();
+                mat.dispose();
+              }
+            });
+          } else if (!sharedMaterials.includes(obj.material as any)) {
+            if (obj.material.map) obj.material.map.dispose(); // Dispose textures
+            if ((obj.material as any).normalMap) (obj.material as any).normalMap.dispose();
+            if ((obj.material as any).emissiveMap) (obj.material as any).emissiveMap.dispose();
+            obj.material.dispose();
+          }
         }
       }
-    })
+      
+      // Remove from parent
+      if (obj.parent) {
+        obj.parent.remove(obj);
+      }
+    };
+    
+    gameObjects.forEach(disposeObject);
     
     // Add stations using the factory (geometry/material logic centralized)
     stations.forEach(station => {
@@ -735,6 +754,52 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
     
     renderGameObjects()
   }, [stations, routes, trains, trainMovementNetwork, visualRouteNetwork, useParallelVisualization, selectedStationId])
+  
+  // Cleanup on component unmount
+  useEffect(() => {
+    return () => {
+      // Dispose all shared geometries and materials
+      const shared = sharedGeometriesRef.current;
+      
+      // Dispose shared geometries
+      if (shared.passengerGeometry) shared.passengerGeometry.dispose();
+      if (shared.trainPassengerGeometry) shared.trainPassengerGeometry.dispose();
+      if (shared.selectionRingGeometry) shared.selectionRingGeometry.dispose();
+      if (shared.unconnectedRingGeometry) shared.unconnectedRingGeometry.dispose();
+      if (shared.distressParticleGeometry) shared.distressParticleGeometry.dispose();
+      
+      // Dispose shared materials
+      if (shared.passengerMaterial) shared.passengerMaterial.dispose();
+      if (shared.trainPassengerMaterial) shared.trainPassengerMaterial.dispose();
+      if (shared.selectionRingMaterial) shared.selectionRingMaterial.dispose();
+      if (shared.unconnectedRingMaterial) shared.unconnectedRingMaterial.dispose();
+      if (shared.distressParticleMaterial) shared.distressParticleMaterial.dispose();
+      
+      // Dispose instanced meshes
+      const instances = instancedMeshesRef.current;
+      if (instances.stationPassengers) {
+        instances.stationPassengers.geometry.dispose();
+        if (Array.isArray(instances.stationPassengers.material)) {
+          instances.stationPassengers.material.forEach(mat => mat.dispose());
+        } else {
+          instances.stationPassengers.material.dispose();
+        }
+      }
+      if (instances.trainPassengers) {
+        instances.trainPassengers.geometry.dispose();
+        if (Array.isArray(instances.trainPassengers.material)) {
+          instances.trainPassengers.material.forEach(mat => mat.dispose());
+        } else {
+          instances.trainPassengers.material.dispose();
+        }
+      }
+      
+      // Remove Three.js layer from map if it exists
+      if (mapContext?.map && layerRef.current && mapContext.map.getLayer('stations-3d')) {
+        mapContext.map.removeLayer('stations-3d');
+      }
+    };
+  }, [mapContext?.map]);
   
   return null
 }
