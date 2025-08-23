@@ -12,7 +12,6 @@ export default function MapComponent() {
           maxZoom: GAME_CONFIG.maxZoom,
           maxPitch: 0,
           dragRotate: false,
-          touchZoomRotate: false,
           pitchWithRotate: false,
         }}
         mapId="metromesh_map"
