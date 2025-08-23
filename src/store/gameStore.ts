@@ -191,36 +191,30 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
 
     const updatedTrains = state.trains.map(train => {
       const route = state.routes.find(r => r.id === train.routeId)
-      if (!route || route.stations.length < 2) return train
+      const cachedNetwork = state.cachedRouteNetwork;
+      const cachedRoute = cachedNetwork?.routes.find(r => r.routeId === train.routeId)
+      const coordinates = cachedRoute?.coordinates || [];
+      if (!route || coordinates.length < 2) return train
 
-      // Calculate movement speed based on actual distance between current stations
-      const currentStationIdx = Math.floor(train.position)
-      const nextStationIdx = Math.min(currentStationIdx + 1, route.stations.length - 1)
-      
-      // Get actual station positions to calculate real distance
-      const currentStationId = route.stations[currentStationIdx]
-      const nextStationId = route.stations[nextStationIdx]
-      const currentStationObj = state.stations.find(s => s.id === currentStationId)
-      const nextStationObj = state.stations.find(s => s.id === nextStationId)
-      
+      // Calculate movement speed based on actual distance between current coordinates
+      const currentCoordIdx = Math.floor(train.position)
+      const nextCoordIdx = Math.min(currentCoordIdx + 1, coordinates.length - 1)
+
+      const currentCoord = coordinates[currentCoordIdx]
+      const nextCoord = coordinates[nextCoordIdx]
+
       let speedPerLoop = 0.005 // Default fallback speed
-      
-      if (currentStationObj && nextStationObj && currentStationObj.id !== nextStationObj.id) {
-        // Calculate actual distance between these two stations (in degrees)
-        const deltaLng = nextStationObj.position.lng - currentStationObj.position.lng
-        const deltaLat = nextStationObj.position.lat - currentStationObj.position.lat
+      if (currentCoord && nextCoord && (currentCoord.lng !== nextCoord.lng || currentCoord.lat !== nextCoord.lat)) {
+        // Calculate actual distance between these two coordinates (in degrees)
+        const deltaLng = nextCoord.lng - currentCoord.lng
+        const deltaLat = nextCoord.lat - currentCoord.lat
         const actualDistance = Math.sqrt(deltaLng * deltaLng + deltaLat * deltaLat)
-        
         // Normalize speed: longer distances should take proportionally longer
-        // Base speed in "degrees per second" 
         const baseSpeedPerSecond = 0.003 // degrees per second (10x faster)
         const baseSpeedPerLoop = baseSpeedPerSecond * 0.1 // 100ms loops
-        
-        // Calculate position increment based on actual distance
-        // We want to move at baseSpeedPerLoop degrees per loop, so:
-        speedPerLoop = baseSpeedPerLoop / Math.max(0.0001, actualDistance) // position units per loop
+        speedPerLoop = baseSpeedPerLoop / Math.max(0.0001, actualDistance)
       }
-      
+
       let newPosition = train.position
       let newDirection = train.direction
       let newWaitTime = train.waitTime
@@ -229,36 +223,35 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
 
       // Check if route is circular (first and last station are the same)
       const isCircularRoute = route.stations.length > 2 && route.stations[0] === route.stations[route.stations.length - 1]
-      
-      // Check if train is at a station (within 0.01 units for precision)
-      const currentStationIndex = Math.round(train.position)
-      const distanceToStation = Math.abs(train.position - currentStationIndex)
-      
-      if (distanceToStation < 0.01 && currentStationIndex >= 0 && currentStationIndex < route.stations.length) {
+
+      // Find which coordinates correspond to stations
+      const stationCoordIndices = route.stations.map(stationId => coordinates.findIndex(c => c.lng === (state.stations.find(s => s.id === stationId)?.position.lng) && c.lat === (state.stations.find(s => s.id === stationId)?.position.lat)))
+
+      // Check if train is at a station coordinate (within 0.01 units for precision)
+      const currentCoordIndex = Math.round(train.position)
+      const stationIndexAtCoord = stationCoordIndices.indexOf(currentCoordIndex)
+      const distanceToStation = Math.abs(train.position - currentCoordIndex)
+
+      if (distanceToStation < 0.01 && stationIndexAtCoord !== -1) {
         // Train is at a station
-        if (newWaitTime <= 0 && currentStationIndex !== train.lastStationVisited) {
+        if (newWaitTime <= 0 && currentCoordIndex !== train.lastStationVisited) {
           // Just arrived at a NEW station - handle passengers
-          const stationId = route.stations[currentStationIndex]
-          
+          const stationId = route.stations[stationIndexAtCoord]
           // Score points for delivered passengers
           newScore += train.passengerCount * 10
-          
           // All passengers get off
           newPassengerCount = 0
-          
           // Pick up new passengers from station
           const station = state.stations.find(s => s.id === stationId)
           if (station && station.passengerCount > 0) {
             const pickupCount = Math.min(station.passengerCount, train.capacity)
             newPassengerCount = pickupCount
-            
-            // Update station passenger count and clear overloaded status if below 20
             set({
               stations: state.stations.map(s => {
                 if (s.id === stationId) {
                   const newPassengerCount = Math.max(0, s.passengerCount - pickupCount)
-                  return { 
-                    ...s, 
+                  return {
+                    ...s,
                     passengerCount: newPassengerCount,
                     overloadedSince: newPassengerCount < 20 ? undefined : s.overloadedSince
                   }
@@ -267,42 +260,32 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
               })
             })
           }
-          
           // Start waiting and mark this station as visited
           newWaitTime = 10 // Wait for 1 second
-          newLastStationVisited = currentStationIndex
+          newLastStationVisited = currentCoordIndex
         } else if (newWaitTime > 0) {
-          // Currently waiting at station
           newWaitTime--
-          // Don't move while waiting
         } else {
-          // Finished waiting at this station - can now move
           newPosition = train.position + speedPerLoop * train.direction * state.gameSpeed
         }
       } else {
         // Not at a station - move normally and reset wait time
         newPosition = train.position + speedPerLoop * train.direction * state.gameSpeed
         newWaitTime = 0
-        
         // Reset lastStationVisited when train moves away from a station
-        // This allows trains to visit the same station again on return trips
-        const newStationIndex = Math.round(newPosition)
-        if (newStationIndex !== train.lastStationVisited) {
-          newLastStationVisited = -1 // Reset when moving between stations
+        if (currentCoordIndex !== train.lastStationVisited) {
+          newLastStationVisited = -1
         }
-
         // Handle boundaries based on route type
         if (isCircularRoute) {
-          // Circular route: continue in same direction, wrap around
-          if (newPosition >= route.stations.length - 1) {
-            newPosition = 0 // Loop back to start
+          if (newPosition >= coordinates.length - 1) {
+            newPosition = 0
           } else if (newPosition < 0) {
-            newPosition = route.stations.length - 2 // Loop back to end (avoiding duplicate last station)
+            newPosition = coordinates.length - 2
           }
         } else {
-          // Linear route: reverse direction at ends
-          if (newPosition >= route.stations.length - 1) {
-            newPosition = route.stations.length - 1
+          if (newPosition >= coordinates.length - 1) {
+            newPosition = coordinates.length - 1
             newDirection = -1
           } else if (newPosition <= 0) {
             newPosition = 0
