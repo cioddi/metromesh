@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { LngLat } from '../types'
 import { generateRandomPosition, TRAIN_CONFIG } from '../config/gameConfig'
+import { calculateRouteNetwork, type CachedRouteNetwork } from '../utils/routeNetworkCalculator'
 
 interface Station {
   id: string
@@ -47,6 +48,7 @@ interface GameState {
   } | null
   gameStartTime: number
   lastStationSpawnTime: number
+  cachedRouteNetwork: CachedRouteNetwork | null
 }
 
 interface GameActions {
@@ -58,6 +60,7 @@ interface GameActions {
   addPassengerToStation: (stationId: string) => void
   selectStation: (stationId: string | null) => void
   triggerGameOver: (reason: string) => void
+  updateRouteNetworkCache: () => void
 }
 
 const STATION_COLORS = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24', '#f0932b', '#eb4d4b', '#6c5ce7', '#a29bfe']
@@ -79,6 +82,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   gameOverStats: null,
   gameStartTime: Date.now(),
   lastStationSpawnTime: Date.now(),
+  cachedRouteNetwork: null,
 
   // Actions
   addStation: (position, waterCheckFn, buildingDensityFn, isInitialStation = false, bounds) => {
@@ -134,6 +138,9 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       routes: [...state.routes, newRoute],
       trains: [...state.trains, newTrain]
     })
+    
+    // Update route network cache after adding new route
+    get().updateRouteNetworkCache()
   },
 
   extendRoute: (routeId, newStationId, atEnd) => {
@@ -171,6 +178,9 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
         return { ...route, stations: updatedStations }
       })
     })
+    
+    // Update route network cache after extending route
+    get().updateRouteNetworkCache()
   },
 
   updateTrainPositions: () => {
@@ -364,7 +374,8 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       gameOverReason: null,
       gameOverStats: null,
       gameStartTime: Date.now(),
-      lastStationSpawnTime: Date.now()
+      lastStationSpawnTime: Date.now(),
+      cachedRouteNetwork: null
     })
   },
 
@@ -387,5 +398,24 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
         gameTime: gameTime
       }
     })
+  },
+
+  updateRouteNetworkCache: () => {
+    const state = get()
+    
+    // Only calculate if we have routes
+    if (state.routes.length === 0) {
+      set({ cachedRouteNetwork: null })
+      return
+    }
+    
+    // Calculate the complete route network with all parallel line visualizations
+    try {
+      const cachedNetwork = calculateRouteNetwork(state.routes, state.stations)
+      set({ cachedRouteNetwork: cachedNetwork })
+    } catch (error) {
+      console.error('Failed to calculate route network:', error)
+      set({ cachedRouteNetwork: null })
+    }
   }
 }))

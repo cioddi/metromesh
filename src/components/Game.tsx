@@ -352,7 +352,6 @@ export default function Game() {
     <>
       <MapComponent />
       <GameThreeLayer 
-        gameData={gameDataForThreeJs} 
         onStationClick={selectStation} 
         selectedStationId={selectedStationId}
       />
