@@ -35,95 +35,48 @@ function createMetroRouteCoordinates(
   // Calculate alignment thresholds in Mercator space
   const meterUnit = startMerc.meterInMercatorCoordinateUnits();
   const alignmentThreshold = 10 * meterUnit; // ~10m threshold
-  const minStraightSegment = 30 * meterUnit; // Minimum 30m for straight segments
+  // const minStraightSegment = 30 * meterUnit; // Minimum 30m for straight segments (unused)
 
-  // If already aligned horizontally or vertically, go straight
-  if (Math.abs(dx_m) < alignmentThreshold) {
-    coordinates.push([start.lng, target.lat]);
-    return coordinates;
-  }
-  if (Math.abs(dy_m) < alignmentThreshold) {
-    coordinates.push([target.lng, start.lat]);
-    return coordinates;
-  }
-
-  // For dogleg routes, ensure both segments meet minimum length requirements
+  // Only allow straight or 45-degree diagonal connections, never a hard 90-degree corner
   const absDx_m = Math.abs(dx_m);
   const absDy_m = Math.abs(dy_m);
+  const signDx = Math.sign(dx_m);
+  const signDy = Math.sign(dy_m);
+  const diagThreshold = 0.000001;
 
-  // Determine route orientation and calculate optimal corner position
-  let cornerMerc: MercatorCoordinate;
-  let finalConnectionPoint: LngLat;
+  // If the two points are nearly aligned horizontally, vertically, or diagonally, draw a straight line
+  const isHorizontal = absDy_m < alignmentThreshold;
+  const isVertical = absDx_m < alignmentThreshold;
+  const isDiagonal = Math.abs(absDx_m - absDy_m) < alignmentThreshold;
 
-  if (absDx_m < absDy_m) {
-    // Route ends with vertical segment
-    const availableVertical = absDy_m;
-    const diagonalComponent = Math.min(
-      absDx_m,
-      availableVertical - minStraightSegment
-    );
-
-    if (diagonalComponent <= 0) {
-      // Not enough space for diagonal - go straight vertical
-      coordinates.push([start.lng, target.lat]);
-      return coordinates;
-    }
-
-    // Calculate corner position ensuring minimum straight segment
-    const cornerY = startMerc.y + Math.sign(dy_m) * diagonalComponent;
-    cornerMerc = new MercatorCoordinate(targetMerc.x, cornerY, 0);
-
-    // Final connection point ensures perfect vertical alignment
-    finalConnectionPoint = target; // Connect to station center for vertical approach
-  } else {
-    // Route ends with horizontal segment
-    const availableHorizontal = absDx_m;
-    const diagonalComponent = Math.min(
-      absDy_m,
-      availableHorizontal - minStraightSegment
-    );
-
-    if (diagonalComponent <= 0) {
-      // Not enough space for diagonal - go straight horizontal
-      coordinates.push([target.lng, start.lat]);
-      return coordinates;
-    }
-
-    // Calculate corner position ensuring minimum straight segment
-    const cornerX = startMerc.x + Math.sign(dx_m) * diagonalComponent;
-    cornerMerc = new MercatorCoordinate(cornerX, targetMerc.y, 0);
-
-    // Final connection point ensures perfect horizontal alignment
-    finalConnectionPoint = target; // Connect to station center for horizontal approach
+  if (isHorizontal || isVertical || isDiagonal) {
+    coordinates.push([target.lng, target.lat]);
+    return coordinates;
   }
 
-  // Convert corner to lng-lat and ensure perfect metro alignment
-  const cornerLngLat = cornerMerc.toLngLat();
-  let cornerLng = cornerLngLat.lng;
-  let cornerLat = cornerLngLat.lat;
+  // Otherwise, always use a 45-degree diagonal as far as possible, then a straight segment
+  // Find the maximum possible diagonal distance (in Mercator units)
+  const diagComponent = Math.min(absDx_m, absDy_m);
+  const diagX = startMerc.x + signDx * diagComponent;
+  const diagY = startMerc.y + signDy * diagComponent;
+  const diagMerc = new MercatorCoordinate(diagX, diagY, 0);
+  const diagLngLat = diagMerc.toLngLat();
 
-  // Force perfect alignment by snapping corner to target's axis
-  if (absDx_m < absDy_m) {
-    // Vertical final segment - corner must share target's longitude exactly
-    cornerLng = finalConnectionPoint.lng;
-  } else {
-    // Horizontal final segment - corner must share target's latitude exactly
-    cornerLat = finalConnectionPoint.lat;
-  }
-
-  // Add corner point if it's significantly different from start
-  const cornerThreshold = 0.000001;
-  const lastCoord = coordinates[coordinates.length - 1];
+  // Add the diagonal point
   if (
-    Math.abs(cornerLng - lastCoord[0]) > cornerThreshold ||
-    Math.abs(cornerLat - lastCoord[1]) > cornerThreshold
+    Math.abs(diagLngLat.lng - start.lng) > diagThreshold ||
+    Math.abs(diagLngLat.lat - start.lat) > diagThreshold
   ) {
-    coordinates.push([cornerLng, cornerLat]);
+    coordinates.push([diagLngLat.lng, diagLngLat.lat]);
   }
 
-  // Always add the final connection point
-  coordinates.push([finalConnectionPoint.lng, finalConnectionPoint.lat]);
+  // Add the final straight segment to the target
+  coordinates.push([target.lng, target.lat]);
 
+  // Debug: log the generated coordinates for this segment
+  if (typeof window !== 'undefined' && (window as unknown as { DEBUG_METROMESH_PATHS?: boolean }).DEBUG_METROMESH_PATHS) {
+    console.log('[MetroMesh] Path from', start, 'to', target, '->', coordinates);
+  }
   return coordinates;
 }
 
