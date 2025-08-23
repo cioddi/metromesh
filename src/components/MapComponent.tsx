@@ -1,5 +1,5 @@
-import { MapLibreMap } from '@mapcomponents/react-maplibre'
-import { MAP_CENTER, GAME_CONFIG } from '../config/gameConfig'
+import { MapLibreMap } from "@mapcomponents/react-maplibre";
+import { MAP_CENTER, GAME_CONFIG } from "../config/gameConfig";
 
 export default function MapComponent() {
   return (
@@ -7,10 +7,13 @@ export default function MapComponent() {
       <MapLibreMap
         options={{
           zoom: GAME_CONFIG.initialZoom,
-          style: 'https://wms.wheregroup.com/tileserver/style/osm-bright.json',
+          style: "https://wms.wheregroup.com/tileserver/style/osm-bright.json",
           center: [MAP_CENTER.lng, MAP_CENTER.lat],
           maxZoom: GAME_CONFIG.maxZoom,
           maxPitch: 0,
+          dragRotate: false,
+          touchZoomRotate: false,
+          pitchWithRotate: false,
         }}
         mapId="metromesh_map"
       />

@@ -31,15 +31,15 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
   
   // Shared geometries and materials for performance
   const sharedGeometriesRef = useRef<{
-    passengerGeometry?: THREE.SphereGeometry
-    trainPassengerGeometry?: THREE.SphereGeometry
+    passengerGeometry?: THREE.CylinderGeometry
+    trainPassengerGeometry?: THREE.CylinderGeometry
     passengerMaterial?: THREE.MeshBasicMaterial
-    trainPassengerMaterial?: THREE.MeshStandardMaterial
+    trainPassengerMaterial?: THREE.MeshBasicMaterial
     selectionRingGeometry?: THREE.RingGeometry
     selectionRingMaterial?: THREE.MeshBasicMaterial
     unconnectedRingGeometry?: THREE.RingGeometry
     unconnectedRingMaterial?: THREE.MeshBasicMaterial
-    distressParticleGeometry?: THREE.SphereGeometry
+    distressParticleGeometry?: THREE.CylinderGeometry
     distressParticleMaterial?: THREE.MeshBasicMaterial
   }>({})
   
@@ -139,27 +139,30 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
         raycasterRef.current = new THREE.Raycaster()
         mouseRef.current = new THREE.Vector2()
         
-        // Initialize shared geometries and materials for performance
-        sharedGeometriesRef.current.passengerGeometry = new THREE.SphereGeometry(
-          0.3, 
-          PERFORMANCE_CONFIG.reducedSphereSegments, 
-          PERFORMANCE_CONFIG.reducedSphereSegments
+        // Initialize optimized geometries and materials for maximum performance
+        // Use simple cylinders instead of spheres for passengers - much more efficient
+        sharedGeometriesRef.current.passengerGeometry = new THREE.CylinderGeometry(
+          0.15, // radiusTop
+          0.15, // radiusBottom  
+          0.3,  // height
+          6,    // radialSegments (very low for performance)
+          1     // heightSegments
         )
-        sharedGeometriesRef.current.trainPassengerGeometry = new THREE.SphereGeometry(
-          0.2, 
-          PERFORMANCE_CONFIG.reducedSphereSegments, 
-          PERFORMANCE_CONFIG.reducedSphereSegments
+        sharedGeometriesRef.current.trainPassengerGeometry = new THREE.CylinderGeometry(
+          0.1,  // radiusTop
+          0.1,  // radiusBottom
+          0.2,  // height  
+          6,    // radialSegments (very low for performance)
+          1     // heightSegments
         )
+        // Use basic materials for all passengers - no lighting calculations needed
         sharedGeometriesRef.current.passengerMaterial = new THREE.MeshBasicMaterial({ 
           color: 0x555555,
-          side: THREE.DoubleSide
+          // No side property needed for basic rendering
         })
-        sharedGeometriesRef.current.trainPassengerMaterial = new THREE.MeshStandardMaterial({ 
+        sharedGeometriesRef.current.trainPassengerMaterial = new THREE.MeshBasicMaterial({ 
           color: 0x333333,
-          roughness: 0.4,
-          metalness: 0.0,
-          envMapIntensity: 0.3,
-          side: THREE.DoubleSide
+          // Removed all expensive material properties for maximum performance
         })
         
         // Initialize selection ring geometry and material
@@ -186,8 +189,14 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
           side: THREE.DoubleSide
         })
         
-        // Initialize distress particle effects
-        sharedGeometriesRef.current.distressParticleGeometry = new THREE.SphereGeometry(0.1, 6, 4)
+        // Initialize distress particle effects with optimized geometry
+        sharedGeometriesRef.current.distressParticleGeometry = new THREE.CylinderGeometry(
+          0.05, // radiusTop
+          0.05, // radiusBottom
+          0.1,  // height
+          4,    // radialSegments (minimal for particles)
+          1     // heightSegments
+        )
         sharedGeometriesRef.current.distressParticleMaterial = new THREE.MeshBasicMaterial({
           color: 0xFF6666, // Light red for particles
           transparent: true,
