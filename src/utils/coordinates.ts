@@ -1,4 +1,5 @@
 import type { LngLat, Position } from '../types'
+import { MercatorCoordinate } from 'maplibre-gl'
 
 const EARTH_RADIUS = 6371000
 
@@ -30,4 +31,19 @@ export function interpolatePosition(start: LngLat, end: LngLat, t: number): LngL
     lng: start.lng + (end.lng - start.lng) * t,
     lat: start.lat + (end.lat - start.lat) * t
   }
+}
+
+// Web Mercator-based distance calculation for consistency
+export function getDistanceInMeters(pos1: LngLat, pos2: LngLat): number {
+  // Use Web Mercator for accurate distance calculation
+  const merc1 = MercatorCoordinate.fromLngLat([pos1.lng, pos1.lat], 0)
+  const merc2 = MercatorCoordinate.fromLngLat([pos2.lng, pos2.lat], 0)
+  
+  const dx_m = merc2.x - merc1.x
+  const dy_m = merc2.y - merc1.y
+  const distance_m = Math.hypot(dx_m, dy_m)
+  
+  // Convert from Mercator units to meters
+  const meterUnit = merc1.meterInMercatorCoordinateUnits()
+  return distance_m / meterUnit
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMap } from '@mapcomponents/react-maplibre';
 import maplibregl from 'maplibre-gl';
 import type { LngLat, Route } from '../types';
+import { getDistanceInMeters } from '../utils/coordinates';
 
 interface DragState {
   isDragging: boolean;
@@ -433,18 +434,6 @@ function findClosestStation(
     }
   }
   return closestStation;
-}
-
-// Simple distance calculation (rough approximation)
-function getDistanceInMeters(pos1: LngLat, pos2: LngLat): number {
-  const dlng = pos2.lng - pos1.lng;
-  const dlat = pos2.lat - pos1.lat;
-  
-  // Rough conversion to meters (assuming roughly 111km per degree)
-  const dxMeters = dlng * 111000 * Math.cos(pos1.lat * Math.PI / 180);
-  const dyMeters = dlat * 111000;
-  
-  return Math.sqrt(dxMeters * dxMeters + dyMeters * dyMeters);
 }
 
 // Helper function to find closest route endpoint to a point

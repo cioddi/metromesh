@@ -3,10 +3,11 @@ import { useMap } from '@mapcomponents/react-maplibre'
 import * as THREE from 'three'
 import { MercatorCoordinate } from 'maplibre-gl'
 import type { LngLat } from '../types'
-import { createStationObject } from '../utils/threeObjectFactories'
+import { createStationObject } from '../utils/threeStationFactory'
 import { PERFORMANCE_CONFIG } from '../config/gameConfig'
 import { useGameStore } from '../store/gameStore'
 import { getTrainPositionFromCache } from '../utils/routeNetworkCalculator'
+import { getDistanceInMeters } from '../utils/coordinates'
 
 interface GameThreeLayerProps {
   onStationClick?: (stationId: string) => void
@@ -710,21 +711,6 @@ function findClosestStation(
     }
   }
   return closestStation;
-}
-
-// Web Mercator-based distance calculation for consistency
-function getDistanceInMeters(pos1: LngLat, pos2: LngLat): number {
-  // Use Web Mercator for accurate distance calculation
-  const merc1 = MercatorCoordinate.fromLngLat([pos1.lng, pos1.lat], 0)
-  const merc2 = MercatorCoordinate.fromLngLat([pos2.lng, pos2.lat], 0)
-  
-  const dx_m = merc2.x - merc1.x
-  const dy_m = merc2.y - merc1.y
-  const distance_m = Math.hypot(dx_m, dy_m)
-  
-  // Convert from Mercator units to meters
-  const meterUnit = merc1.meterInMercatorCoordinateUnits()
-  return distance_m / meterUnit
 }
 
 export default GameThreeLayer
