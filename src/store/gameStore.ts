@@ -52,7 +52,7 @@ interface GameState {
 }
 
 interface GameActions {
-  addStation: (position?: LngLat, waterCheckFn?: (position: LngLat) => boolean, buildingDensityFn?: (position: LngLat) => number, isInitialStation?: boolean, bounds?: { southwest: LngLat; northeast: LngLat }) => void
+  addStation: (position?: LngLat, waterCheckFn?: (position: LngLat) => boolean, transportationDensityFn?: (position: LngLat) => number, isInitialStation?: boolean, bounds?: { southwest: LngLat; northeast: LngLat }) => void
   addRoute: (stationIds: string[], color: string) => void
   extendRoute: (routeId: string, stationId: string, atEnd: boolean) => void
   updateTrainPositions: () => void
@@ -85,28 +85,25 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   cachedRouteNetwork: null,
 
   // Actions
-  addStation: (position, waterCheckFn, buildingDensityFn, isInitialStation = false, bounds) => {
+  addStation: (position, waterCheckFn, transportationDensityFn, isInitialStation = false, bounds) => {
     const state = get()
     const stationPosition = position || generateRandomPosition(state.stations, waterCheckFn, isInitialStation, bounds)
-    
-    // Calculate building density if function provided
-    let buildingDensity = 0.5 // Default medium density
-    if (buildingDensityFn) {
+    // Calculate transportation density if function provided
+    let buildingDensity = 0.5 // Default medium density (kept property name for compatibility)
+    if (transportationDensityFn) {
       try {
-        buildingDensity = Math.max(0, Math.min(1, buildingDensityFn(stationPosition)))
+        buildingDensity = Math.max(0, Math.min(1, transportationDensityFn(stationPosition)))
       } catch (error) {
-        console.warn('Error calculating building density:', error)
+        console.warn('Error calculating transportation density:', error)
       }
     }
-    
     const newStation: Station = {
       id: `station-${Date.now()}`,
       position: stationPosition,
       color: STATION_COLORS[state.stations.length % STATION_COLORS.length],
       passengerCount: 0,
-      buildingDensity
+      buildingDensity // Still called buildingDensity in Station for now
     }
-
     set({ 
       stations: [...state.stations, newStation],
       lastStationSpawnTime: Date.now()

@@ -92,64 +92,58 @@ export default function Game() {
     }
   }, [mapHook?.map]);
 
-  // Building density calculation using queryRenderedFeatures
-  const getBuildingDensity = useCallback((position: LngLat): number => {
+  // Transportation density calculation using queryRenderedFeatures
+  const getTransportationDensity = useCallback((position: LngLat): number => {
     if (!mapHook?.map) return 0.5;
     try {
       const point = mapHook.map.project([position.lng, position.lat]);
-      
       // Query features in a larger area around the position
       const radius = 50; // pixels
       const bbox: [[number, number], [number, number]] = [
-        [point.x - radius, point.y - radius], // top-left
-        [point.x + radius, point.y + radius]  // bottom-right
+        [point.x - radius, point.y - radius],
+        [point.x + radius, point.y + radius]
       ];
-      
-      // Query only building layer features in the bbox
+      // Query only the relevant highway layers in the bbox
+      const highwayLayers = [
+        'highway-path',
+        'highway-motorway-link',
+        'highway-link',
+        'highway-minor',
+        'highway-secondary-tertiary',
+        'highway-primary',
+        'highway-trunk',
+        'highway-motorway'
+      ];
       const features = mapHook.map.queryRenderedFeatures(bbox, {
-        layers: ['building']
+        layers: highwayLayers
       });
-      
-      // Since we're querying specifically the 'building' layer, all features are buildings
-      const buildingCount = features.length;
-      
-      // Debug: Log building count occasionally
-      if (features.length > 0 && Math.random() < 0.05) { // Log 5% of the time
-        console.log('🏢 Building density debug:', {
-          buildingFeatures: buildingCount,
-          position: `${position.lat.toFixed(4)}, ${position.lng.toFixed(4)}`
+      const highwayCount = features.length;
+        console.log('🚇 Highway density debug:', {
+          highwayFeatures: highwayCount,
         });
-      }
-      
-      // Convert building count to density (0-1 range)
-      if (buildingCount === 0) return 0.2; // Rural - no buildings
-      
-      // Scale building count to density
-      // Adjust these thresholds based on typical building counts in your map
+      // Convert highway count to density (0-1 range)
+      if (highwayCount === 0) return 0.2; // Rural - no highways
+      // Scale highway count to density
       let rawDensity;
-      if (buildingCount <= 2) rawDensity = 0.3;      // Low density
-      else if (buildingCount <= 6) rawDensity = 0.5; // Medium density  
-      else if (buildingCount <= 12) rawDensity = 0.7; // High density
-      else rawDensity = 1.0;                         // Urban core
-      
+      if (highwayCount <= 15) rawDensity = 0.3;
+      else if (highwayCount <= 35) rawDensity = 0.5;
+      else if (highwayCount <= 65) rawDensity = 0.7;
+      else rawDensity = 1.0;
       // Apply final scaling to 0.2-1.0 range
       const finalDensity = 0.2 + rawDensity * 0.8;
-      
       // Debug: Log density calculation occasionally
-      if (Math.random() < 0.05) { // Log 5% of the time
-        console.log('🏢 Density calculation:', {
-          buildingCount,
+      if (Math.random() < 0.05) {
+        console.log('🚇 Density calculation:', {
+          highwayCount,
           rawDensity,
           finalDensity,
           position: `${position.lat.toFixed(4)}, ${position.lng.toFixed(4)}`
         });
       }
-      
       return finalDensity;
-      
     } catch (error) {
-      console.warn('Error calculating building density:', error);
-      return 0.5; // Default medium density
+      console.warn('Error calculating transportation density:', error);
+      return 0.5;
     }
   }, [mapHook?.map]);
 
@@ -179,14 +173,14 @@ export default function Game() {
       console.log('🚀 Creating two initial stations using unified spawning logic...');
       
       // Create first initial station (no existing stations, so distance check is skipped)
-      addStation(undefined, isPositionOnWater, getBuildingDensity, true, mapBounds);
+  addStation(undefined, isPositionOnWater, getTransportationDensity, true, mapBounds);
       
       // Create second initial station (will respect distance constraints to first station)
       setTimeout(() => {
-        addStation(undefined, isPositionOnWater, getBuildingDensity, true, mapBounds);
+  addStation(undefined, isPositionOnWater, getTransportationDensity, true, mapBounds);
       }, 100); // Small delay to ensure first station is added to store first
     }
-  }, [stations.length, addStation, mapHook?.map, isPositionOnWater, getBuildingDensity]);
+  }, [stations.length, addStation, mapHook?.map, isPositionOnWater, getTransportationDensity]);
 
   useEffect(() => {
     if (!isPlaying) return;
@@ -201,7 +195,7 @@ export default function Game() {
       const shouldRandomSpawn = Math.random() < GAME_CONFIG.stationSpawnProbability;
       
       if (hasMinDelayPassed && (shouldRandomSpawn || shouldForceSpawn) && stations.length < GAME_CONFIG.maxStations) {
-        addStation(undefined, isPositionOnWater, getBuildingDensity); // No position provided = random placement, avoiding water
+  addStation(undefined, isPositionOnWater, getTransportationDensity); // No position provided = random placement, avoiding water
       }
 
       // Spawn passengers based on building density
@@ -227,7 +221,7 @@ export default function Game() {
     stations,
     lastStationSpawnTime,
     isPositionOnWater,
-    getBuildingDensity,
+  getTransportationDensity,
   ]);
 
 
