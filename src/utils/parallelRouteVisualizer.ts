@@ -108,39 +108,56 @@ export function calculateParallelRouteVisualization(
 
     let currentRouteDistance = 0
 
-    // Sample each segment of the route using schematic paths
+    // Sample each segment of the route using schematic paths, smoothing corners
     for (let segIdx = 0; segIdx < routeStations.length - 1; segIdx++) {
       const start = routeStations[segIdx]!
       const end = routeStations[segIdx + 1]!
-      
-      // Get schematic coordinates for this segment
       const schematicCoords = createMetroRouteCoordinates(start.position, end.position)
-      
-      // Sample along each sub-segment of the schematic path
-      for (let subSegIdx = 0; subSegIdx < schematicCoords.length - 1; subSegIdx++) {
-        const subStart = { lng: schematicCoords[subSegIdx][0], lat: schematicCoords[subSegIdx][1] }
-        const subEnd = { lng: schematicCoords[subSegIdx + 1][0], lat: schematicCoords[subSegIdx + 1][1] }
-        const subSegLength = getDistanceInMeters(subStart, subEnd)
-        
-        if (subSegLength < 1) continue // Skip very short sub-segments
-        
-        const numSamples = Math.max(2, Math.ceil(subSegLength / SAMPLING_DISTANCE_METERS))
-        
-        for (let sampleIdx = 0; sampleIdx < numSamples - 1; sampleIdx++) {
-          const t1 = sampleIdx / (numSamples - 1)
-          const t2 = (sampleIdx + 1) / (numSamples - 1)
-          
-          const startPos = interpolatePosition(subStart, subEnd, t1)
-          const endPos = interpolatePosition(subStart, subEnd, t2)
+
+      // If the schematic path has a corner (3 points), smooth the join
+      if (schematicCoords.length === 3) {
+        const [p0, p1, p2] = schematicCoords
+        const cornerRadiusMeters = 20 // adjust for more/less smoothing
+        // Convert to Mercator for arc calculation
+        const m0 = MercatorCoordinate.fromLngLat([p0[0], p0[1]], 0)
+        const m1 = MercatorCoordinate.fromLngLat([p1[0], p1[1]], 0)
+        const m2 = MercatorCoordinate.fromLngLat([p2[0], p2[1]], 0)
+
+        // Find direction vectors
+        const v0 = { x: m1.x - m0.x, y: m1.y - m0.y }
+        const v1 = { x: m2.x - m1.x, y: m2.y - m1.y }
+        const len0 = Math.hypot(v0.x, v0.y)
+        const len1 = Math.hypot(v1.x, v1.y)
+        // Shorten the straight segments by the corner radius
+        const r0 = Math.min(cornerRadiusMeters * m0.meterInMercatorCoordinateUnits(), len0 / 2)
+        const r1 = Math.min(cornerRadiusMeters * m2.meterInMercatorCoordinateUnits(), len1 / 2)
+        const arcStart = { x: m1.x - (v0.x / len0) * r0, y: m1.y - (v0.y / len0) * r0 }
+        const arcEnd = { x: m1.x + (v1.x / len1) * r1, y: m1.y + (v1.y / len1) * r1 }
+
+        // Convert arc points back to lng/lat
+        const arcStartLngLat = MercatorCoordinate.fromLngLat([0,0],0)
+        arcStartLngLat.x = arcStart.x; arcStartLngLat.y = arcStart.y;
+        const arcStartLL = arcStartLngLat.toLngLat()
+        const arcEndLngLat = MercatorCoordinate.fromLngLat([0,0],0)
+        arcEndLngLat.x = arcEnd.x; arcEndLngLat.y = arcEnd.y;
+        const arcEndLL = arcEndLngLat.toLngLat()
+
+        // Sample first segment (p0 to arcStartLL)
+        const seg1Start = { lng: p0[0], lat: p0[1] }
+        const seg1End = { lng: arcStartLL.lng, lat: arcStartLL.lat }
+        const seg1Length = getDistanceInMeters(seg1Start, seg1End)
+        const numSeg1 = Math.max(2, Math.ceil(seg1Length / SAMPLING_DISTANCE_METERS))
+        for (let i = 0; i < numSeg1 - 1; i++) {
+          const t1 = i / (numSeg1 - 1)
+          const t2 = (i + 1) / (numSeg1 - 1)
+          const startPos = interpolatePosition(seg1Start, seg1End, t1)
+          const endPos = interpolatePosition(seg1Start, seg1End, t2)
           const centerPos = interpolatePosition(startPos, endPos, 0.5)
-          
-          // Convert to Mercator for true visual direction calculation
           const startMerc = MercatorCoordinate.fromLngLat([startPos.lng, startPos.lat], 0)
           const endMerc = MercatorCoordinate.fromLngLat([endPos.lng, endPos.lat], 0)
           const dx_m = endMerc.x - startMerc.x
           const dy_m = endMerc.y - startMerc.y
           const len_m = Math.hypot(dx_m, dy_m)
-          
           const microSeg: MicroSegment = {
             id: `micro-${microSegmentCounter++}`,
             routeId: route.id,
@@ -148,16 +165,115 @@ export function calculateParallelRouteVisualization(
             endPos,
             centerPos,
             direction: len_m > 0 ? { x: dx_m / len_m, y: dy_m / len_m } : { x: 1, y: 0 },
-            length: subSegLength,
-            routeT: (currentRouteDistance + (sampleIdx / (numSamples - 1)) * subSegLength) / totalRouteLength,
+            length: seg1Length,
+            routeT: (currentRouteDistance + (i / (numSeg1 - 1)) * seg1Length) / totalRouteLength,
             segmentIndex: segIdx
           }
-          
           routeMicros.push(microSeg)
           allMicroSegments.push(microSeg)
         }
-        
-        currentRouteDistance += subSegLength
+        currentRouteDistance += seg1Length
+
+        // Sample arc (quadratic Bézier from arcStartLL to arcEndLL, control at p1)
+        const arcSamples = 5
+        for (let i = 0; i < arcSamples - 1; i++) {
+          const t1 = i / (arcSamples - 1)
+          const t2 = (i + 1) / (arcSamples - 1)
+          // Quadratic Bézier interpolation
+          const bezier = (a: LngLat, b: LngLat, c: LngLat, t: number) => ({
+            lng: (1 - t) * (1 - t) * a.lng + 2 * (1 - t) * t * b.lng + t * t * c.lng,
+            lat: (1 - t) * (1 - t) * a.lat + 2 * (1 - t) * t * b.lat + t * t * c.lat
+          })
+          const startPos = bezier(seg1End, { lng: p1[0], lat: p1[1] }, seg1End, t1)
+          const endPos = bezier(seg1End, { lng: p1[0], lat: p1[1] }, seg1End, t2)
+          const centerPos = bezier(seg1End, { lng: p1[0], lat: p1[1] }, seg1End, (t1 + t2) / 2)
+          const startMerc = MercatorCoordinate.fromLngLat([startPos.lng, startPos.lat], 0)
+          const endMerc = MercatorCoordinate.fromLngLat([endPos.lng, endPos.lat], 0)
+          const dx_m = endMerc.x - startMerc.x
+          const dy_m = endMerc.y - startMerc.y
+          const len_m = Math.hypot(dx_m, dy_m)
+          const microSeg: MicroSegment = {
+            id: `micro-${microSegmentCounter++}`,
+            routeId: route.id,
+            startPos,
+            endPos,
+            centerPos,
+            direction: len_m > 0 ? { x: dx_m / len_m, y: dy_m / len_m } : { x: 1, y: 0 },
+            length: len_m,
+            routeT: (currentRouteDistance + (i / (arcSamples - 1)) * len_m) / totalRouteLength,
+            segmentIndex: segIdx
+          }
+          routeMicros.push(microSeg)
+          allMicroSegments.push(microSeg)
+        }
+        currentRouteDistance += getDistanceInMeters(seg1End, arcEndLL)
+
+        // Sample second segment (arcEndLL to p2)
+        const seg2Start = { lng: arcEndLL.lng, lat: arcEndLL.lat }
+        const seg2End = { lng: p2[0], lat: p2[1] }
+        const seg2Length = getDistanceInMeters(seg2Start, seg2End)
+        const numSeg2 = Math.max(2, Math.ceil(seg2Length / SAMPLING_DISTANCE_METERS))
+        for (let i = 0; i < numSeg2 - 1; i++) {
+          const t1 = i / (numSeg2 - 1)
+          const t2 = (i + 1) / (numSeg2 - 1)
+          const startPos = interpolatePosition(seg2Start, seg2End, t1)
+          const endPos = interpolatePosition(seg2Start, seg2End, t2)
+          const centerPos = interpolatePosition(startPos, endPos, 0.5)
+          const startMerc = MercatorCoordinate.fromLngLat([startPos.lng, startPos.lat], 0)
+          const endMerc = MercatorCoordinate.fromLngLat([endPos.lng, endPos.lat], 0)
+          const dx_m = endMerc.x - startMerc.x
+          const dy_m = endMerc.y - startMerc.y
+          const len_m = Math.hypot(dx_m, dy_m)
+          const microSeg: MicroSegment = {
+            id: `micro-${microSegmentCounter++}`,
+            routeId: route.id,
+            startPos,
+            endPos,
+            centerPos,
+            direction: len_m > 0 ? { x: dx_m / len_m, y: dy_m / len_m } : { x: 1, y: 0 },
+            length: seg2Length,
+            routeT: (currentRouteDistance + (i / (numSeg2 - 1)) * seg2Length) / totalRouteLength,
+            segmentIndex: segIdx
+          }
+          routeMicros.push(microSeg)
+          allMicroSegments.push(microSeg)
+        }
+        currentRouteDistance += seg2Length
+      } else {
+        // No corner, just sample as before
+        for (let subSegIdx = 0; subSegIdx < schematicCoords.length - 1; subSegIdx++) {
+          const subStart = { lng: schematicCoords[subSegIdx][0], lat: schematicCoords[subSegIdx][1] }
+          const subEnd = { lng: schematicCoords[subSegIdx + 1][0], lat: schematicCoords[subSegIdx + 1][1] }
+          const subSegLength = getDistanceInMeters(subStart, subEnd)
+          if (subSegLength < 1) continue
+          const numSamples = Math.max(2, Math.ceil(subSegLength / SAMPLING_DISTANCE_METERS))
+          for (let sampleIdx = 0; sampleIdx < numSamples - 1; sampleIdx++) {
+            const t1 = sampleIdx / (numSamples - 1)
+            const t2 = (sampleIdx + 1) / (numSamples - 1)
+            const startPos = interpolatePosition(subStart, subEnd, t1)
+            const endPos = interpolatePosition(subStart, subEnd, t2)
+            const centerPos = interpolatePosition(startPos, endPos, 0.5)
+            const startMerc = MercatorCoordinate.fromLngLat([startPos.lng, startPos.lat], 0)
+            const endMerc = MercatorCoordinate.fromLngLat([endPos.lng, endPos.lat], 0)
+            const dx_m = endMerc.x - startMerc.x
+            const dy_m = endMerc.y - startMerc.y
+            const len_m = Math.hypot(dx_m, dy_m)
+            const microSeg: MicroSegment = {
+              id: `micro-${microSegmentCounter++}`,
+              routeId: route.id,
+              startPos,
+              endPos,
+              centerPos,
+              direction: len_m > 0 ? { x: dx_m / len_m, y: dy_m / len_m } : { x: 1, y: 0 },
+              length: subSegLength,
+              routeT: (currentRouteDistance + (sampleIdx / (numSamples - 1)) * subSegLength) / totalRouteLength,
+              segmentIndex: segIdx
+            }
+            routeMicros.push(microSeg)
+            allMicroSegments.push(microSeg)
+          }
+          currentRouteDistance += subSegLength
+        }
       }
     }
     
