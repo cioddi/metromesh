@@ -29,15 +29,15 @@ export default function GameUI({ gameState, onStationSelectFromList }: GameUIPro
           <img src="/metromesh/logo.png" alt="MetroMesh" className="logo" />
           <div className="stats">
             <div className="stat-item">
-              <span className="stat-value">{gameState.score}</span>
+              <span className="stat-value" data-testid="score">{gameState.score}</span>
               <span className="stat-label">Score</span>
             </div>
             <div className="stat-item">
-              <span className="stat-value">{gameState.stations.length}</span>
+              <span className="stat-value" data-testid="stations-count">{gameState.stations.length}</span>
               <span className="stat-label">Stations</span>
             </div>
             <div className="stat-item">
-              <span className="stat-value">{gameState.stations.reduce((total, station) => total + (station.passengerCount || 0), 0)}</span>
+              <span className="stat-value" data-testid="passengers-count">{gameState.stations.reduce((total, station) => total + (station.passengerCount || 0), 0)}</span>
               <span className="stat-label">Passengers</span>
             </div>
           </div>
@@ -110,15 +110,15 @@ export default function GameUI({ gameState, onStationSelectFromList }: GameUIPro
         <img src="/metromesh/logo.png" alt="MetroMesh" className="logo" />
         <div className="stats">
           <div className="stat-item">
-            <span className="stat-value">{gameState.score}</span>
+            <span className="stat-value" data-testid="score">{gameState.score}</span>
             <span className="stat-label">Score</span>
           </div>
           <div className="stat-item">
-            <span className="stat-value">{gameState.stations.length}</span>
+            <span className="stat-value" data-testid="stations-count">{gameState.stations.length}</span>
             <span className="stat-label">Stations</span>
           </div>
           <div className="stat-item">
-            <span className="stat-value">{gameState.stations.reduce((total, station) => total + (station.passengerCount || 0), 0)}</span>
+            <span className="stat-value" data-testid="passengers-count">{gameState.stations.reduce((total, station) => total + (station.passengerCount || 0), 0)}</span>
             <span className="stat-label">Passengers</span>
           </div>
         </div>

@@ -3,6 +3,7 @@ import { useMap } from '@mapcomponents/react-maplibre';
 import maplibregl from 'maplibre-gl';
 import type { LngLat, Route } from '../types';
 import { getDistanceInMeters } from '../utils/coordinates';
+import { createMetroRouteCoordinates } from '../utils/routeNetworkCalculator';
 
 interface DragState {
   isDragging: boolean;
@@ -359,10 +360,10 @@ function StationDragHandler({ stations, routes, onCreateRoute, onExtendRoute, on
       // Create preview line with metro-style routing
       let coordinates = [[startStation.position.lng, startStation.position.lat]];
       
-      // If we have a target station, create the corner route
+      // If we have a target station, create the corner route using the same function as actual routes
       const targetStation = dragState.targetStation ? stations.find(s => s.id === dragState.targetStation) : null;
       if (targetStation) {
-        const cornerRoute = createMetroRoute(startStation.position, targetStation.position);
+        const cornerRoute = createMetroRouteCoordinates(startStation.position, targetStation.position);
         coordinates = cornerRoute;
       } else {
         // No target, just show straight line to mouse position
@@ -508,48 +509,5 @@ function snapTo45DegreeConnection(_start: LngLat, target: LngLat): LngLat {
   return { lng: target.lng, lat: target.lat };
 }
 
-// Helper function to create a metro-style route with corner points
-function createMetroRoute(start: LngLat, target: LngLat): number[][] {
-  const dx = target.lng - start.lng;
-  const dy = target.lat - start.lat;
-  
-  
-  // Start with the starting point
-  const coordinates: number[][] = [[start.lng, start.lat]];
-  
-  // If already aligned horizontally or vertically, go straight
-  if (Math.abs(dx) < 0.0001) {
-    coordinates.push([start.lng, target.lat]);
-    return coordinates;
-  }
-  if (Math.abs(dy) < 0.0001) {
-    coordinates.push([target.lng, start.lat]);
-    return coordinates;
-  }
-  
-  // Calculate which direction to go diagonally first
-  const absDx = Math.abs(dx);
-  const absDy = Math.abs(dy);
-  
-  // Determine the 45-degree direction (northeast, northwest, southeast, southwest)
-  const diagonalDx = dx > 0 ? 1 : -1; // East or West
-  const diagonalDy = dy > 0 ? 1 : -1; // North or South
-  
-  // Go 45 degrees until we align with target on one axis
-  // Choose the shorter distance to minimize the diagonal segment
-  const diagonalDistance = Math.min(absDx, absDy);
-  
-  // Calculate the corner point where we transition from diagonal to straight
-  const cornerLng = start.lng + diagonalDx * diagonalDistance;
-  const cornerLat = start.lat + diagonalDy * diagonalDistance;
-  
-  // Add the corner point
-  coordinates.push([cornerLng, cornerLat]);
-  
-  // Add the final target point
-  coordinates.push([target.lng, target.lat]);
-  
-  return coordinates;
-}
 
 export default StationDragHandler;

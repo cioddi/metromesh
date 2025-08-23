@@ -1,0 +1,42 @@
+{
+  "initialState": {
+    "score": 0,
+    "stations": [],
+    "routes": [],
+    "trains": []
+  },
+  "sampleGameState": {
+    "score": 150,
+    "stations": [
+      {
+        "id": "station-1",
+        "position": { "lng": -0.1278, "lat": 51.5074 },
+        "color": "#ff6b6b",
+        "passengerCount": 5
+      },
+      {
+        "id": "station-2", 
+        "position": { "lng": -0.1367, "lat": 51.5155 },
+        "color": "#4ecdc4",
+        "passengerCount": 8
+      }
+    ],
+    "routes": [
+      {
+        "id": "route-1",
+        "color": "#e74c3c",
+        "stations": ["station-1", "station-2"]
+      }
+    ],
+    "trains": [
+      {
+        "id": "train-1",
+        "routeId": "route-1",
+        "position": 0.5,
+        "direction": 1,
+        "passengerCount": 3,
+        "capacity": 6
+      }
+    ]
+  }
+}

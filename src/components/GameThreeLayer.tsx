@@ -566,9 +566,13 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
           const startMercator = MercatorCoordinate.fromLngLat([start.position.lng, start.position.lat], 0)
           const endMercator = MercatorCoordinate.fromLngLat([end.position.lng, end.position.lat], 0)
 
+          // Position routes below stations (same as parallel view)
+          const startZ = startMercator.z - startMercator.meterInMercatorCoordinateUnits() * 5
+          const endZ = endMercator.z - endMercator.meterInMercatorCoordinateUnits() * 5
+
           const points = [
-            new THREE.Vector3(startMercator.x, startMercator.y, startMercator.z + 0.000001),
-            new THREE.Vector3(endMercator.x, endMercator.y, endMercator.z + 0.000001)
+            new THREE.Vector3(startMercator.x, startMercator.y, startZ),
+            new THREE.Vector3(endMercator.x, endMercator.y, endZ)
           ]
 
           const geometry = new THREE.BufferGeometry().setFromPoints(points)
