@@ -62,19 +62,25 @@ export default function GameUI({ gameState, onStationSelectFromList }: GameUIPro
           <button onClick={() => setShowInstructions((s) => !s)}>
             Instructions
           </button>
+          <button onClick={() => setShowCitySearch((s) => !s)}>
+            Cities
+          </button>
           <button onClick={() => setShowAttributions(true)}>
             About
           </button>
         </div>
         
-        <div className="city-selector-mobile">
-          <CitySearch
-            onCitySelect={handleCitySelect}
-            currentCity={currentCity}
-            isOpen={showCitySearch}
-            onToggle={() => setShowCitySearch(!showCitySearch)}
-          />
-        </div>
+        {showCitySearch && (
+          <div className="city-selector-mobile">
+            <h3 className="section-title">Cities</h3>
+            <CitySearch
+              onCitySelect={handleCitySelect}
+              currentCity={currentCity}
+              isOpen={true}
+              onToggle={() => setShowCitySearch(false)}
+            />
+          </div>
+        )}
         {showStations && (
           <div className="stations-section mobile">
             <h3 className="section-title">Stations</h3>

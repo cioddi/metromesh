@@ -125,33 +125,7 @@ export default function CitySearch({ onCitySelect, currentCity, isOpen, onToggle
   return (
     <>
       <div className="city-search-container" ref={containerRef}>
-        <div 
-          className="city-search-header"
-          onTouchStart={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (!isOpen) {
-              onToggle();
-              setTimeout(() => {
-                if (inputRef.current) {
-                  inputRef.current.focus();
-                }
-              }, 100);
-            }
-          }}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (!isOpen) {
-              onToggle();
-              setTimeout(() => {
-                if (inputRef.current) {
-                  inputRef.current.focus();
-                }
-              }, 100);
-            }
-          }}
-        >
+        <div className="city-search-header">
           <span className="city-icon">🌍</span>
           <input
             ref={inputRef}
@@ -164,6 +138,29 @@ export default function CitySearch({ onCitySelect, currentCity, isOpen, onToggle
             onFocus={(e) => {
               e.stopPropagation();
               if (!isOpen) onToggle();
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (!isOpen) {
+                onToggle();
+                setTimeout(() => {
+                  if (inputRef.current) {
+                    inputRef.current.focus();
+                  }
+                }, 50);
+              }
+            }}
+            onTouchStart={(e) => {
+              e.stopPropagation();
+              if (!isOpen) {
+                onToggle();
+                setTimeout(() => {
+                  if (inputRef.current) {
+                    inputRef.current.focus();
+                  }
+                }, 50);
+              }
             }}
           />
           {searchTerm && (
