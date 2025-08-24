@@ -645,16 +645,12 @@
         "text-max-angle": 30,
         "text-pitch-alignment": "viewport",
         "text-rotation-alignment": "map",
-        "text-size": 10,
+        "text-size": 1,
         "text-transform": "uppercase",
         "visibility": "visible"
       },
       "paint": {
-        "text-color": "#bbb",
-        "text-halo-blur": 1,
-        "text-halo-color": "#fff",
-        "text-halo-width": 2,
-        "text-translate": [0, 0]
+        "text-color": "rgba(0,0,0,0)"
       }
     },
     {
