@@ -160,11 +160,11 @@ export default function Game() {
       
       
       // Create first initial station (no existing stations, so distance check is skipped)
-  addStation(undefined, isPositionOnWater, getTransportationDensity, true, mapBounds);
+      addStation(mapBounds, undefined, isPositionOnWater, getTransportationDensity, true);
       
       // Create second initial station (will respect distance constraints to first station)
       setTimeout(() => {
-  addStation(undefined, isPositionOnWater, getTransportationDensity, true, mapBounds);
+        addStation(mapBounds, undefined, isPositionOnWater, getTransportationDensity, true);
       }, 100); // Small delay to ensure first station is added to store first
     }
   }, [stations.length, addStation, mapHook?.map, isPositionOnWater, getTransportationDensity]);
@@ -181,8 +181,19 @@ export default function Game() {
       const shouldForceSpawn = timeSinceLastStationSpawn > GAME_CONFIG.maxStationSpawnDelay;
       const shouldRandomSpawn = Math.random() < GAME_CONFIG.stationSpawnProbability;
       
-      if (hasMinDelayPassed && (shouldRandomSpawn || shouldForceSpawn) && stations.length < GAME_CONFIG.maxStations) {
-  addStation(undefined, isPositionOnWater, getTransportationDensity); // No position provided = random placement, avoiding water
+      if (hasMinDelayPassed && (shouldRandomSpawn || shouldForceSpawn) && stations.length < GAME_CONFIG.maxStations && mapHook?.map) {
+        const bounds = mapHook.map.getBounds();
+        const gameBounds = {
+          southwest: {
+            lng: bounds.getSouthWest().lng,
+            lat: bounds.getSouthWest().lat
+          },
+          northeast: {
+            lng: bounds.getNorthEast().lng,
+            lat: bounds.getNorthEast().lat
+          }
+        };
+        addStation(gameBounds, undefined, isPositionOnWater, getTransportationDensity, false); // No position provided = random placement, avoiding water
       }
 
       // Spawn passengers based on building density

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { LngLat } from '../types'
-import { generateRandomPosition, TRAIN_CONFIG, calculateDistance } from '../config/gameConfig'
+import { TRAIN_CONFIG } from '../config/gameConfig'
+import { generateStationPosition, calculateDistance } from '../utils/stationPositioning'
 import { calculateTrainMovementNetwork, type TrainMovementNetwork } from '../utils/routeNetworkCalculator'
 import { calculateParallelRouteVisualization, generateVisualRouteNetwork, type VisualRouteNetwork } from '../utils/parallelRouteVisualizer'
 
@@ -57,7 +58,7 @@ interface GameState {
 }
 
 interface GameActions {
-  addStation: (position?: LngLat, waterCheckFn?: (position: LngLat) => boolean, transportationDensityFn?: (position: LngLat) => number, isInitialStation?: boolean, bounds?: { southwest: LngLat; northeast: LngLat }) => void
+  addStation: (bounds: { southwest: LngLat; northeast: LngLat }, position?: LngLat, waterCheckFn?: (position: LngLat) => boolean, transportationDensityFn?: (position: LngLat) => number, isInitialStation?: boolean) => void
   addRoute: (stationIds: string[], color: string) => void
   extendRoute: (routeId: string, stationId: string, atEnd: boolean) => void
   updateTrainPositions: () => void
@@ -97,9 +98,9 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   useParallelVisualization: true,
 
   // Actions
-  addStation: (position, waterCheckFn, transportationDensityFn, isInitialStation = false, bounds) => {
+  addStation: (bounds, position, waterCheckFn, transportationDensityFn, isInitialStation = false) => {
     const state = get()
-    const stationPosition = position || generateRandomPosition(state.stations, waterCheckFn, isInitialStation, bounds)
+    const stationPosition = position || generateStationPosition(state.stations, bounds, waterCheckFn, isInitialStation)
     // Calculate transportation density if function provided
     let buildingDensity = 0.5 // Default medium density (kept property name for compatibility)
     if (transportationDensityFn) {

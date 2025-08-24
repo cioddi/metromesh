@@ -257,15 +257,17 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
       }
     }
 
+    console.log('set resize handler')
     // Listen to map resize events
     map.on('resize', handleResize)
 
     // Also listen to window resize for additional safety
-    window.addEventListener('resize', handleResize)
+    //window.addEventListener('resize', handleResize)
 
     return () => {
+    console.log('remove resize handler')
       map.off('resize', handleResize)
-      window.removeEventListener('resize', handleResize)
+      //window.removeEventListener('resize', handleResize)
     }
   }, [mapContext?.map])
 
