@@ -19,7 +19,7 @@ export const MAP_CENTER: LngLat = {
 // Game settings
 export const GAME_CONFIG = {
   stationSpawnProbability: 0.0015, // Per game loop cycle (100ms) - half the rate
-  passengerSpawnProbability: 0.065, // Balanced spawn rate for optimal gameplay
+  passengerSpawnProbability: 0.045, // Balanced spawn rate for optimal gameplay
   maxStations: 12,
   initialZoom: 13,
   maxZoom: 16,
@@ -34,8 +34,8 @@ export const GAME_CONFIG = {
 
 // Performance settings
 export const PERFORMANCE_CONFIG = {
-  maxRenderedPassengers: 100, // Max individual passenger objects
-  maxPassengersPerStation: 10, // Max passengers shown per station
+  maxRenderedPassengers: 400, // Max individual passenger objects
+  maxPassengersPerStation: 20, // Max passengers shown per station
   maxTrainPassengers: 9, // Max passenger dots per train
   reducedSphereSegments: 6, // Lower geometry quality for passengers
   enableInstancedRendering: true, // Use instanced meshes
