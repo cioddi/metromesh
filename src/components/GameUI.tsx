@@ -64,7 +64,7 @@ export default function GameUI({ gameState, onStationSelectFromList }: GameUIPro
                   onClick={() => onStationSelectFromList?.(station.id)}
                 >
                   <div className="station-info">
-                    <span className="station-name">Stn {station.id.slice(-4)}</span>
+                    <span className="station-name">{station.name ? station.name : `Stn ${station.id.slice(-4)}`}</span>
                     <div className="route-indicators">
                       {getConnectedRoutes(station.id).map(route => (
                         <div 
@@ -133,7 +133,7 @@ export default function GameUI({ gameState, onStationSelectFromList }: GameUIPro
               onClick={() => onStationSelectFromList?.(station.id)}
             >
               <div className="station-info">
-                <span className="station-name">Stn {station.id.slice(-4)}</span>
+                <span className="station-name">{station.name ? station.name : `Stn ${station.id.slice(-4)}`}</span>
                 <div className="route-indicators">
                   {getConnectedRoutes(station.id).map(route => (
                     <div 

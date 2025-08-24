@@ -40,7 +40,7 @@ export default function StationStats() {
   return (
     <div className="selected-station-info">
       <div className="selected-station-header">
-        <span className="section-title">Stn {selectedStation.id.slice(-4)}</span>
+  <span className="section-title">{selectedStation.name ? selectedStation.name : `Stn ${selectedStation.id.slice(-4)}`}</span>
         <button 
           className="deselect-btn"
           onClick={() => selectStation(null)}

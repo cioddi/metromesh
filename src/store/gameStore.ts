@@ -12,6 +12,7 @@ interface Station {
   passengerCount: number // Simple count instead of complex array
   overloadedSince?: number // Timestamp when station first reached 20+ passengers
   buildingDensity?: number // Building count in area (0-1 normalized)
+  name?: string // Optional station name from suburb feature
 }
 
 interface Route {
@@ -58,7 +59,7 @@ interface GameState {
 }
 
 interface GameActions {
-  addStation: (bounds: { southwest: LngLat; northeast: LngLat }, position?: LngLat, waterCheckFn?: (position: LngLat) => boolean, transportationDensityFn?: (position: LngLat) => number, isInitialStation?: boolean) => void
+  addStation: (bounds: { southwest: LngLat; northeast: LngLat }, position?: LngLat, waterCheckFn?: (position: LngLat) => boolean, transportationDensityFn?: (position: LngLat) => number, isInitialStation?: boolean, name?: string) => void
   addRoute: (stationIds: string[], color: string) => void
   extendRoute: (routeId: string, stationId: string, atEnd: boolean) => void
   updateTrainPositions: () => void
@@ -98,7 +99,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   useParallelVisualization: true,
 
   // Actions
-  addStation: (bounds, position, waterCheckFn, transportationDensityFn, isInitialStation = false) => {
+  addStation: (bounds, position, waterCheckFn, transportationDensityFn, isInitialStation = false, name) => {
     const state = get()
     const stationPosition = position || generateStationPosition(state.stations, bounds, waterCheckFn, isInitialStation)
     // Calculate transportation density if function provided
@@ -115,7 +116,8 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       position: stationPosition,
       color: STATION_COLORS[state.stations.length % STATION_COLORS.length],
       passengerCount: 0,
-      buildingDensity // Still called buildingDensity in Station for now
+      buildingDensity, // Still called buildingDensity in Station for now
+      name
     }
     set({ 
       stations: [...state.stations, newStation],
