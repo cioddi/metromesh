@@ -99,7 +99,6 @@ export function generateRandomPosition(
     
     // If no existing stations, any non-water position is valid
     if (existingStations.length === 0) {
-      console.log(`✅ Generated ${isInitialStation ? 'initial' : 'regular'} station (first station, no distance check)`);
       return candidate;
     }
     
@@ -122,8 +121,6 @@ export function generateRandomPosition(
     
     // Valid position: not too close to any station and within range of at least one
     if (!tooClose && !tooFar) {
-      const nearestDistance = Math.min(...existingStations.map(s => calculateDistance(candidate, s.position)));
-      console.log(`✅ Generated ${isInitialStation ? 'initial' : 'regular'} station ${nearestDistance.toFixed(0)}m from nearest (min: ${MIN_DISTANCE}m, max: ${MAX_DISTANCE}m)`);
       return candidate;
     }
   }

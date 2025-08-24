@@ -78,10 +78,6 @@ export function createMetroRouteCoordinates(
     coordinates.push([target.lng, target.lat]);
   }
 
-  // Debug: log the generated coordinates for this segment
-  if (typeof window !== 'undefined' && (window as unknown as { DEBUG_METROMESH_PATHS?: boolean }).DEBUG_METROMESH_PATHS) {
-    console.log('[MetroMesh] Path from', start, 'to', target, '->', coordinates);
-  }
   return coordinates;
 }
 
@@ -696,12 +692,6 @@ export function calculateParallelRouteVisualization(
         bestPoint.routeId = route.id
         routeMap.set(station.id, bestPoint)
         
-        // Debug output for octagonal system
-        if (typeof window !== 'undefined' && (window as unknown as { DEBUG_METROMESH_OCTAGON?: boolean }).DEBUG_METROMESH_OCTAGON) {
-          const sideNames = ['East', 'NE', 'North', 'NW', 'West', 'SW', 'South', 'SE']
-          const existingOnSide = attachmentPoints.filter(p => p.occupied && p.side === bestPoint.side).length - 1 // -1 because we just occupied this one
-          console.log(`[MetroMesh] Route ${route.id} → Station ${station.id}: Layer ${bestPoint.layer}, Side ${bestPoint.side} (${sideNames[bestPoint.side]}, ${(bestPoint.angle * 180 / Math.PI).toFixed(1)}°), Score: ${bestScore}, Existing on side: ${existingOnSide}`)
-        }
       }
     }
     

@@ -242,6 +242,7 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
     const canvas = map.getCanvas()
 
     const handleResize = () => {
+      console.log('RESIZE')
       if (layerRef.current?.renderer) {
         const renderer = layerRef.current.renderer
         // Get the current canvas size
@@ -283,7 +284,6 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
       const closestStation = findClosestStation(pointLngLat, stations, 150) // 150m radius
       
       if (closestStation) {
-        console.log('✅ Station selected:', closestStation.id)
         onStationClick(closestStation.id)
       } else {
         console.log('❌ No station found within 150m')

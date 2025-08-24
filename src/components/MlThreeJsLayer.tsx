@@ -120,12 +120,6 @@ const MlThreeJsLayer = ({
         const mercatorScale = mercator.meterInMercatorCoordinateUnits * baseScale
         threeObject.object3D.scale.setScalar(mercatorScale)
         
-        console.log(`Adding object ${threeObject.id}:`, {
-          position: { x: mercator.x, y: mercator.y, z: mercator.z },
-          scale: mercatorScale,
-          meterInMercatorCoordinateUnits: mercator.meterInMercatorCoordinateUnits
-        })
-        
         if (threeObject.rotation) {
           threeObject.object3D.rotation.set(
             threeObject.rotation.x,

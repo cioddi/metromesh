@@ -118,9 +118,6 @@ export default function Game() {
         layers: highwayLayers
       });
       const highwayCount = features.length;
-        console.log('🚇 Highway density debug:', {
-          highwayFeatures: highwayCount,
-        });
       // Convert highway count to density (0-1 range)
       if (highwayCount === 0) return 0.2; // Rural - no highways
       // Scale highway count to density
@@ -131,15 +128,6 @@ export default function Game() {
       else rawDensity = 1.0;
       // Apply final scaling to 0.2-1.0 range
       const finalDensity = 0.2 + rawDensity * 0.8;
-      // Debug: Log density calculation occasionally
-      if (Math.random() < 0.05) {
-        console.log('🚇 Density calculation:', {
-          highwayCount,
-          rawDensity,
-          finalDensity,
-          position: `${position.lat.toFixed(4)}, ${position.lng.toFixed(4)}`
-        });
-      }
       return finalDensity;
     } catch (error) {
       console.warn('Error calculating transportation density:', error);
@@ -170,7 +158,6 @@ export default function Game() {
         }
       };
       
-      console.log('🚀 Creating two initial stations using unified spawning logic...');
       
       // Create first initial station (no existing stations, so distance check is skipped)
   addStation(undefined, isPositionOnWater, getTransportationDensity, true, mapBounds);
@@ -249,7 +236,6 @@ export default function Game() {
     });
 
     if (connectionExists) {
-      console.log('Connection already exists between these stations');
       return; // Don't create duplicate connection
     }
 
