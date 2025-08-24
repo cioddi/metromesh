@@ -601,6 +601,7 @@ export default function Game() {
             "text-halo-width": 2,
           },
         }}
+
       />
       <GameThreeLayer
         onStationClick={selectStation}

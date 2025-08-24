@@ -2,6 +2,8 @@ import { useState } from 'react';
 import type { GameState } from '../types';
 import { useGameStore } from '../store/gameStore';
 import AttributionPopup from './AttributionPopup';
+import CitySearch from './CitySearch';
+import { getCurrentCity, setCurrentCity, type City } from '../utils/cityStorage';
 
 interface GameUIProps {
   gameState: Pick<GameState, 'score' | 'stations' | 'routes' | 'trains' | 'isPlaying' | 'gameSpeed'>;
@@ -16,12 +18,21 @@ export default function GameUI({ gameState, onStationSelectFromList }: GameUIPro
   const [showStations, setShowStations] = useState(false);
   const [showInstructions, setShowInstructions] = useState(false);
   const [showAttributions, setShowAttributions] = useState(false);
+  const [showCitySearch, setShowCitySearch] = useState(false);
+  const [currentCity, setCurrentCityState] = useState<City>(getCurrentCity());
   const mobile = isMobile();
-  const { useParallelVisualization, toggleVisualization } = useGameStore();
+  const { useParallelVisualization, toggleVisualization, changeCity } = useGameStore();
 
   // Helper function to get routes connected to a station
   const getConnectedRoutes = (stationId: string) => {
     return gameState.routes.filter(route => route.stations.includes(stationId));
+  };
+
+  // Handle city selection
+  const handleCitySelect = (city: City) => {
+    setCurrentCity(city); // Save to localStorage
+    setCurrentCityState(city); // Update local state
+    changeCity(); // Reset game and reload with new city
   };
 
   if (mobile) {
@@ -54,6 +65,15 @@ export default function GameUI({ gameState, onStationSelectFromList }: GameUIPro
           <button onClick={() => setShowAttributions(true)}>
             About
           </button>
+        </div>
+        
+        <div className="city-selector-mobile">
+          <CitySearch
+            onCitySelect={handleCitySelect}
+            currentCity={currentCity}
+            isOpen={showCitySearch}
+            onToggle={() => setShowCitySearch(!showCitySearch)}
+          />
         </div>
         {showStations && (
           <div className="stations-section mobile">
@@ -129,6 +149,15 @@ export default function GameUI({ gameState, onStationSelectFromList }: GameUIPro
           </div>
         </div>
       </div>
+      <div className="city-selector-desktop">
+        <CitySearch
+          onCitySelect={handleCitySelect}
+          currentCity={currentCity}
+          isOpen={showCitySearch}
+          onToggle={() => setShowCitySearch(!showCitySearch)}
+        />
+      </div>
+      
       <div className="stations-section">
         <h3 className="section-title">Stations</h3>
         <div className="stations-list">

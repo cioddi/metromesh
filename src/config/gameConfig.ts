@@ -1,20 +1,24 @@
 import type { LngLat } from '../types';
+import { getCurrentCity, getCityCenter, getCityBounds } from '../utils/cityStorage';
 
-// London central area bounding box for station generation
+// Get current city for dynamic configuration
+const currentCity = getCurrentCity();
+
+// Current city bounding box for station generation
+export const CITY_BOUNDS = getCityBounds(currentCity);
+
+// Calculate bounds dimensions
+export const BOUNDS_WIDTH = CITY_BOUNDS.northeast.lng - CITY_BOUNDS.southwest.lng;
+export const BOUNDS_HEIGHT = CITY_BOUNDS.northeast.lat - CITY_BOUNDS.southwest.lat;
+
+// Game map center (from selected city)
+export const MAP_CENTER: LngLat = getCityCenter(currentCity);
+
+// Legacy London bounds for backwards compatibility (if needed)
 export const LONDON_BOUNDS = {
   southwest: { lng: -0.16785167250222344, lat: 51.494542306198014 },
   northeast: { lng: -0.07911706882524072, lat: 51.53028184893728 }
 } as const;
-
-// Calculate bounds dimensions
-export const BOUNDS_WIDTH = LONDON_BOUNDS.northeast.lng - LONDON_BOUNDS.southwest.lng;
-export const BOUNDS_HEIGHT = LONDON_BOUNDS.northeast.lat - LONDON_BOUNDS.southwest.lat;
-
-// Game map center (middle of bounding box)
-export const MAP_CENTER: LngLat = {
-  lng: LONDON_BOUNDS.southwest.lng + BOUNDS_WIDTH / 2,
-  lat: LONDON_BOUNDS.southwest.lat + BOUNDS_HEIGHT / 2
-};
 
 // Game settings
 export const GAME_CONFIG = {

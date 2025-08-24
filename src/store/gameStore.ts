@@ -14,6 +14,7 @@ interface GameActions {
   extendRoute: (routeId: string, stationId: string, atEnd: boolean) => void
   updateTrainPositions: () => void
   resetGame: () => void
+  changeCity: () => void
   addPassengerToStation: (stationId: string) => void
   selectStation: (stationId: string | null) => void
   triggerGameOver: (reason: string) => void
@@ -368,6 +369,56 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       // Keep visualization preference
       useParallelVisualization: true
     })
+  },
+
+  changeCity: () => {
+    // Reset the game state and trigger reinitialization
+    const state = get();
+    
+    // Clear complex network data structures
+    if (state.trainMovementNetwork?.routes) {
+      state.trainMovementNetwork.routes.clear();
+    }
+    
+    if (state.visualRouteNetwork) {
+      if (state.visualRouteNetwork.routes) {
+        state.visualRouteNetwork.routes.length = 0;
+      }
+      if (state.visualRouteNetwork.corridors) {
+        state.visualRouteNetwork.corridors.length = 0;
+      }
+      if (state.visualRouteNetwork.microSegments) {
+        state.visualRouteNetwork.microSegments.length = 0;
+      }
+      if (state.visualRouteNetwork.stationAttachmentPoints) {
+        state.visualRouteNetwork.stationAttachmentPoints.clear();
+      }
+      if (state.visualRouteNetwork.routeAttachmentPoints) {
+        state.visualRouteNetwork.routeAttachmentPoints.clear();
+      }
+    }
+    
+    // Reset all game state
+    set({
+      stations: [],
+      routes: [],
+      trains: [],
+      score: 0,
+      isPlaying: true,
+      gameSpeed: 1,
+      selectedStationId: null,
+      isGameOver: false,
+      gameOverReason: null,
+      gameOverStats: null,
+      gameStartTime: Date.now(),
+      lastStationSpawnTime: Date.now(),
+      trainMovementNetwork: null,
+      visualRouteNetwork: null,
+      useParallelVisualization: state.useParallelVisualization // Keep visualization preference
+    });
+    
+    // Force page reload to reinitialize with new city configuration
+    window.location.reload();
   },
 
   selectStation: (stationId) => {
