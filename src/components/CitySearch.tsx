@@ -135,33 +135,6 @@ export default function CitySearch({ onCitySelect, currentCity, isOpen, onToggle
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             onKeyDown={handleKeyDown}
-            onFocus={(e) => {
-              e.stopPropagation();
-              if (!isOpen) onToggle();
-            }}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (!isOpen) {
-                onToggle();
-                setTimeout(() => {
-                  if (inputRef.current) {
-                    inputRef.current.focus();
-                  }
-                }, 50);
-              }
-            }}
-            onTouchStart={(e) => {
-              e.stopPropagation();
-              if (!isOpen) {
-                onToggle();
-                setTimeout(() => {
-                  if (inputRef.current) {
-                    inputRef.current.focus();
-                  }
-                }, 50);
-              }
-            }}
           />
           {searchTerm && (
             <button 
@@ -201,16 +174,6 @@ export default function CitySearch({ onCitySelect, currentCity, isOpen, onToggle
                 index === highlightedIndex ? 'highlighted' : ''
               } ${currentCity?.id === city.id ? 'current' : ''}`}
               onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handleCitySelect(city);
-              }}
-              onMouseEnter={() => setHighlightedIndex(index)}
-              onTouchStart={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-              }}
-              onTouchEnd={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 handleCitySelect(city);
