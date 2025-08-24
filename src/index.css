@@ -469,9 +469,13 @@ body {
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.visualization-toggle {
+.visualization-toggle,
+.attribution-toggle {
   width: 100%;
   padding: 8px 12px;
   background: #667eea;
@@ -486,7 +490,8 @@ body {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
-.visualization-toggle:active {
+.visualization-toggle:active,
+.attribution-toggle:active {
   transform: translateY(0);
   box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
 }
@@ -860,5 +865,392 @@ body {
   
   .game-over-stats {
     padding: 20px;
+  }
+}
+
+/* Attribution Popup Styles */
+.attribution-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  backdrop-filter: blur(4px);
+  padding: 20px;
+}
+
+.attribution-popup {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  max-width: 600px;
+  width: 100%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  animation: attributionSlideIn 0.4s ease-out;
+}
+
+@keyframes attributionSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.attribution-header {
+  background: linear-gradient(180deg, #ffffff 0%, #ffffff 90%, #667eea 100%);
+  color: black;
+  padding: 20px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.attribution-title {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+  color: #333;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 28px;
+  font-weight: bold;
+  color: #999;
+  cursor: pointer;
+  padding: 0;
+  width: 40px; /* Larger touch target */
+  height: 40px; /* Larger touch target */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.15s ease;
+  pointer-events: auto; /* Ensure touch events work */
+  touch-action: manipulation; /* Optimize for touch */
+  user-select: none;
+  -webkit-tap-highlight-color: rgba(102, 126, 234, 0.2);
+}
+
+.close-btn:hover {
+  background: #f5f5f5;
+  color: #666;
+}
+
+.close-btn:active {
+  background: #e9ecef;
+  transform: scale(0.95);
+}
+
+.attribution-content {
+  padding: 20px 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.attribution-intro {
+  font-size: 14px;
+  color: #666;
+  margin: 0 0 20px 0;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.projects-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.project-item {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.project-item:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.project-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.1s ease;
+  min-height: 44px; /* Ensure good touch target size */
+  user-select: none;
+  -webkit-tap-highlight-color: rgba(102, 126, 234, 0.2);
+  touch-action: manipulation; /* Optimize for touch */
+  pointer-events: auto; /* Ensure touch events work */
+}
+
+.project-header:hover {
+  background: #f8f9fa;
+}
+
+.project-header:focus {
+  outline: 2px solid #667eea;
+  outline-offset: -2px;
+  background: #f8f9fa;
+}
+
+.project-header:active {
+  background: #e9ecef;
+  transform: scale(0.99);
+}
+
+.project-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  pointer-events: none; /* Prevent child elements from blocking touch */
+}
+
+.project-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.project-details {
+  flex: 1;
+  pointer-events: none;
+}
+
+.project-name {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 4px 0;
+  color: #333;
+  pointer-events: none;
+}
+
+.project-description {
+  font-size: 13px;
+  color: #666;
+  margin: 0;
+  line-height: 1.3;
+  pointer-events: none;
+}
+
+.expand-icon {
+  font-size: 20px;
+  font-weight: bold;
+  color: #667eea;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.15s ease;
+  pointer-events: none; /* Icon shouldn't block parent touch events */
+}
+
+.project-header:hover .expand-icon {
+  background: #667eea;
+  color: white;
+}
+
+.project-expanded {
+  padding: 0 16px 16px 16px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  background: #f8f9fa;
+  pointer-events: auto; /* Allow interactions in expanded content */
+}
+
+.project-url {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 16px;
+  padding-top: 16px;
+}
+
+.project-url a {
+  color: #667eea;
+  text-decoration: none;
+  word-break: break-all;
+  pointer-events: auto; /* Re-enable pointer events for links */
+  touch-action: manipulation; /* Optimize for touch */
+}
+
+.project-url a:hover {
+  text-decoration: underline;
+}
+
+.contributors-section {
+  font-size: 13px;
+  color: #666;
+}
+
+.contributors-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.contributor-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.contributor-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.contributor-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.contributor-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.contributor-name {
+  font-weight: 600;
+  color: #333;
+  font-size: 13px;
+}
+
+.contributor-description {
+  font-size: 12px;
+  color: #666;
+  margin-top: 2px;
+}
+
+.github-link {
+  color: #667eea;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid #667eea;
+  transition: all 0.15s ease;
+  pointer-events: auto; /* Re-enable pointer events for contributor links */
+  touch-action: manipulation; /* Optimize for touch */
+  min-height: 32px; /* Better touch target */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.github-link:hover {
+  background: #667eea;
+  color: white;
+}
+
+/* Mobile styles for attribution popup */
+@media (max-width: 768px) {
+  .attribution-overlay {
+    padding: 10px;
+  }
+  
+  .attribution-popup {
+    max-height: 90vh;
+    border-radius: 12px;
+  }
+  
+  .attribution-header {
+    padding: 16px 20px;
+  }
+  
+  .attribution-title {
+    font-size: 18px;
+  }
+  
+  .close-btn {
+    width: 44px; /* Even larger touch target on mobile */
+    height: 44px; /* Even larger touch target on mobile */
+    font-size: 24px;
+  }
+  
+  .attribution-content {
+    padding: 16px 20px;
+  }
+  
+  .project-header {
+    padding: 16px 12px; /* Keep vertical padding for better touch targets */
+    min-height: 48px; /* Slightly larger touch target on mobile */
+  }
+  
+  .project-logo {
+    width: 28px;
+    height: 28px;
+  }
+  
+  .project-name {
+    font-size: 15px;
+  }
+  
+  .project-description {
+    font-size: 12px;
+  }
+  
+  .project-expanded {
+    padding: 0 12px 12px 12px;
+  }
+  
+  .project-url {
+    padding-top: 12px;
+    margin-bottom: 12px;
+  }
+  
+  .contributor-item {
+    padding: 6px 10px;
+  }
+  
+  .contributor-avatar {
+    width: 20px;
+    height: 20px;
+  }
+  
+  .contributor-main {
+    gap: 6px;
+  }
+  
+  .github-link {
+    min-height: 36px; /* Larger touch target on mobile */
+    padding: 6px 10px;
+    font-size: 13px;
   }
 }

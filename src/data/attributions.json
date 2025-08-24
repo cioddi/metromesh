@@ -1,0 +1,282 @@
+[
+  {
+    "name": "@mapcomponents/react-maplibre",
+    "img": "/attributions/@mapcomponents_react-maplibre.png",
+    "description": "MapComponents MapLibre @mapcomponents/react-maplibre is a react component library for declarative GIS application development.",
+    "url": "https://github.com/mapcomponents/react-map-components-maplibre",
+    "contributors": [
+      {
+        "name": "cioddi",
+        "description": "",
+        "github-url": "https://github.com/cioddi",
+        "img": "/attributions/contributors/@mapcomponents_react-maplibre_cioddi.png"
+      },
+      {
+        "name": "MartinAlzueta",
+        "description": "",
+        "github-url": "https://github.com/MartinAlzueta",
+        "img": "/attributions/contributors/@mapcomponents_react-maplibre_MartinAlzueta.png"
+      },
+      {
+        "name": "fapola",
+        "description": "",
+        "github-url": "https://github.com/fapola",
+        "img": "/attributions/contributors/@mapcomponents_react-maplibre_fapola.png"
+      },
+      {
+        "name": "Waffeln",
+        "description": "",
+        "github-url": "https://github.com/Waffeln",
+        "img": "/attributions/contributors/@mapcomponents_react-maplibre_Waffeln.png"
+      },
+      {
+        "name": "JannikBrack",
+        "description": "",
+        "github-url": "https://github.com/JannikBrack",
+        "img": "/attributions/contributors/@mapcomponents_react-maplibre_JannikBrack.png"
+      },
+      {
+        "name": "chringel21",
+        "description": "",
+        "github-url": "https://github.com/chringel21",
+        "img": "/attributions/contributors/@mapcomponents_react-maplibre_chringel21.png"
+      },
+      {
+        "name": "DavidPatzke",
+        "description": "",
+        "github-url": "https://github.com/DavidPatzke",
+        "img": "/attributions/contributors/@mapcomponents_react-maplibre_DavidPatzke.png"
+      },
+      {
+        "name": "Padre1408",
+        "description": "",
+        "github-url": "https://github.com/Padre1408",
+        "img": "/attributions/contributors/@mapcomponents_react-maplibre_Padre1408.png"
+      }
+    ]
+  },
+  {
+    "name": "three",
+    "img": "/attributions/three.png",
+    "description": "js JavaScript 3D library The aim of the project is to create an easy-to-use, lightweight, cross-browser, general-purpose 3D library.",
+    "url": "https://github.com/mrdoob/three.js",
+    "contributors": [
+      {
+        "name": "supereggbert",
+        "description": "",
+        "github-url": "https://github.com/supereggbert",
+        "img": "/attributions/contributors/three_supereggbert.png"
+      },
+      {
+        "name": "NikitaIT",
+        "description": "",
+        "github-url": "https://github.com/NikitaIT",
+        "img": "/attributions/contributors/three_NikitaIT.png"
+      },
+      {
+        "name": "moraxy",
+        "description": "",
+        "github-url": "https://github.com/moraxy",
+        "img": "/attributions/contributors/three_moraxy.png"
+      },
+      {
+        "name": "djreiss",
+        "description": "",
+        "github-url": "https://github.com/djreiss",
+        "img": "/attributions/contributors/three_djreiss.png"
+      },
+      {
+        "name": "webglzhang",
+        "description": "",
+        "github-url": "https://github.com/webglzhang",
+        "img": "/attributions/contributors/three_webglzhang.png"
+      },
+      {
+        "name": "EliasHasle",
+        "description": "",
+        "github-url": "https://github.com/EliasHasle",
+        "img": "/attributions/contributors/three_EliasHasle.png"
+      },
+      {
+        "name": "jahting",
+        "description": "",
+        "github-url": "https://github.com/jahting",
+        "img": "/attributions/contributors/three_jahting.png"
+      },
+      {
+        "name": "bartmcleod",
+        "description": "",
+        "github-url": "https://github.com/bartmcleod",
+        "img": "/attributions/contributors/three_bartmcleod.png"
+      }
+    ]
+  },
+  {
+    "name": "react",
+    "img": "/attributions/react.png",
+    "description": "React is a JavaScript library for building user interfaces.",
+    "url": "https://github.com/facebook/react",
+    "contributors": [
+      {
+        "name": "jddxf",
+        "description": "",
+        "github-url": "https://github.com/jddxf",
+        "img": "/attributions/contributors/react_jddxf.png"
+      },
+      {
+        "name": "rbalicki2",
+        "description": "",
+        "github-url": "https://github.com/rbalicki2",
+        "img": "/attributions/contributors/react_rbalicki2.png"
+      },
+      {
+        "name": "nikeee",
+        "description": "",
+        "github-url": "https://github.com/nikeee",
+        "img": "/attributions/contributors/react_nikeee.png"
+      },
+      {
+        "name": "clemmy",
+        "description": "",
+        "github-url": "https://github.com/clemmy",
+        "img": "/attributions/contributors/react_clemmy.png"
+      },
+      {
+        "name": "behnammodi",
+        "description": "",
+        "github-url": "https://github.com/behnammodi",
+        "img": "/attributions/contributors/react_behnammodi.png"
+      },
+      {
+        "name": "RReverser",
+        "description": "",
+        "github-url": "https://github.com/RReverser",
+        "img": "/attributions/contributors/react_RReverser.png"
+      },
+      {
+        "name": "rickbeerendonk",
+        "description": "",
+        "github-url": "https://github.com/rickbeerendonk",
+        "img": "/attributions/contributors/react_rickbeerendonk.png"
+      },
+      {
+        "name": "yiminghe",
+        "description": "",
+        "github-url": "https://github.com/yiminghe",
+        "img": "/attributions/contributors/react_yiminghe.png"
+      }
+    ]
+  },
+  {
+    "name": "react-dom",
+    "img": "/attributions/react-dom.png",
+    "description": "React package for working with the DOM.",
+    "url": "https://github.com/facebook/react",
+    "contributors": [
+      {
+        "name": "jddxf",
+        "description": "",
+        "github-url": "https://github.com/jddxf",
+        "img": "/attributions/contributors/react-dom_jddxf.png"
+      },
+      {
+        "name": "rbalicki2",
+        "description": "",
+        "github-url": "https://github.com/rbalicki2",
+        "img": "/attributions/contributors/react-dom_rbalicki2.png"
+      },
+      {
+        "name": "nikeee",
+        "description": "",
+        "github-url": "https://github.com/nikeee",
+        "img": "/attributions/contributors/react-dom_nikeee.png"
+      },
+      {
+        "name": "clemmy",
+        "description": "",
+        "github-url": "https://github.com/clemmy",
+        "img": "/attributions/contributors/react-dom_clemmy.png"
+      },
+      {
+        "name": "behnammodi",
+        "description": "",
+        "github-url": "https://github.com/behnammodi",
+        "img": "/attributions/contributors/react-dom_behnammodi.png"
+      },
+      {
+        "name": "RReverser",
+        "description": "",
+        "github-url": "https://github.com/RReverser",
+        "img": "/attributions/contributors/react-dom_RReverser.png"
+      },
+      {
+        "name": "rickbeerendonk",
+        "description": "",
+        "github-url": "https://github.com/rickbeerendonk",
+        "img": "/attributions/contributors/react-dom_rickbeerendonk.png"
+      },
+      {
+        "name": "yiminghe",
+        "description": "",
+        "github-url": "https://github.com/yiminghe",
+        "img": "/attributions/contributors/react-dom_yiminghe.png"
+      }
+    ]
+  },
+  {
+    "name": "zustand",
+    "img": "/attributions/zustand.png",
+    "description": "A small, fast and scalable bearbones state-management solution using simplified flux principles.",
+    "url": "https://github.com/pmndrs/zustand",
+    "contributors": [
+      {
+        "name": "dai-shi",
+        "description": "",
+        "github-url": "https://github.com/dai-shi",
+        "img": "/attributions/contributors/zustand_dai-shi.png"
+      },
+      {
+        "name": "drcmda",
+        "description": "",
+        "github-url": "https://github.com/drcmda",
+        "img": "/attributions/contributors/zustand_drcmda.png"
+      },
+      {
+        "name": "dbritto-dev",
+        "description": "",
+        "github-url": "https://github.com/dbritto-dev",
+        "img": "/attributions/contributors/zustand_dbritto-dev.png"
+      },
+      {
+        "name": "rnike",
+        "description": "",
+        "github-url": "https://github.com/rnike",
+        "img": "/attributions/contributors/zustand_rnike.png"
+      },
+      {
+        "name": "sukvvon",
+        "description": "",
+        "github-url": "https://github.com/sukvvon",
+        "img": "/attributions/contributors/zustand_sukvvon.png"
+      },
+      {
+        "name": "devanshj",
+        "description": "",
+        "github-url": "https://github.com/devanshj",
+        "img": "/attributions/contributors/zustand_devanshj.png"
+      },
+      {
+        "name": "chrisk-7777",
+        "description": "",
+        "github-url": "https://github.com/chrisk-7777",
+        "img": "/attributions/contributors/zustand_chrisk-7777.png"
+      },
+      {
+        "name": "JeremyRH",
+        "description": "",
+        "github-url": "https://github.com/JeremyRH",
+        "img": "/attributions/contributors/zustand_JeremyRH.png"
+      }
+    ]
+  }
+]

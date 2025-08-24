@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { GameState } from '../types';
 import { useGameStore } from '../store/gameStore';
+import AttributionPopup from './AttributionPopup';
 
 interface GameUIProps {
   gameState: Pick<GameState, 'score' | 'stations' | 'routes' | 'trains' | 'isPlaying' | 'gameSpeed'>;
@@ -14,6 +15,7 @@ const isMobile = () => typeof window !== 'undefined' && window.innerWidth <= 768
 export default function GameUI({ gameState, onStationSelectFromList }: GameUIProps) {
   const [showStations, setShowStations] = useState(false);
   const [showInstructions, setShowInstructions] = useState(false);
+  const [showAttributions, setShowAttributions] = useState(false);
   const mobile = isMobile();
   const { useParallelVisualization, toggleVisualization } = useGameStore();
 
@@ -48,6 +50,9 @@ export default function GameUI({ gameState, onStationSelectFromList }: GameUIPro
           </button>
           <button onClick={() => setShowInstructions((s) => !s)}>
             Instructions
+          </button>
+          <button onClick={() => setShowAttributions(true)}>
+            About
           </button>
         </div>
         {showStations && (
@@ -96,6 +101,10 @@ export default function GameUI({ gameState, onStationSelectFromList }: GameUIPro
             </div>
           </div>
         )}
+        <AttributionPopup 
+          isOpen={showAttributions} 
+          onClose={() => setShowAttributions(false)} 
+        />
       </div>
     );
   }
@@ -162,11 +171,18 @@ export default function GameUI({ gameState, onStationSelectFromList }: GameUIPro
           <span>Trains pick up waiting passengers</span>
         </div>
         <div className="visualization-controls">
-          <button onClick={toggleVisualization} className="visualization-toggle">
+          <button style={{display:'none'}} onClick={toggleVisualization} className="visualization-toggle">
             {useParallelVisualization ? 'Simple View' : 'Parallel View'}
+          </button>
+          <button onClick={() => setShowAttributions(true)} className="attribution-toggle">
+            About & Credits
           </button>
         </div>
       </div>
+      <AttributionPopup 
+        isOpen={showAttributions} 
+        onClose={() => setShowAttributions(false)} 
+      />
     </div>
   );
 }
