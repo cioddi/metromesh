@@ -4,7 +4,8 @@ import type { ThreeJsObject } from '../components/MlThreeJsLayer'
 
 // Shared train geometries and materials for performance
 let sharedTrainGeometry: THREE.BoxGeometry | null = null
-let sharedTrainMaterial: THREE.MeshPhysicalMaterial | null = null
+let sharedTrainMaterial: THREE.MeshLambertMaterial | null = null
+let sharedStripeGeometry: THREE.PlaneGeometry | null = null
 
 // Initialize shared resources once
 function initializeSharedResources() {
@@ -14,13 +15,13 @@ function initializeSharedResources() {
   }
   
   if (!sharedTrainMaterial) {
-    sharedTrainMaterial = new THREE.MeshPhysicalMaterial({
-      color: 0xffffff, // White trains
-      roughness: 0.2,
-      metalness: 0.1,
-      envMapIntensity: 0.5,
-      side: THREE.DoubleSide
+    sharedTrainMaterial = new THREE.MeshLambertMaterial({
+      color: 0xffffff // White trains
     })
+  }
+  
+  if (!sharedStripeGeometry) {
+    sharedStripeGeometry = new THREE.PlaneGeometry(0.8, 0.1)
   }
 }
 
@@ -39,16 +40,12 @@ export function createTrainObject(train: {
   
   // Create train body
   const trainMesh = new THREE.Mesh(sharedTrainGeometry!, sharedTrainMaterial!)
-  trainMesh.castShadow = true
-  trainMesh.receiveShadow = true
   
-  // Add route color stripe
-  const stripeGeometry = new THREE.PlaneGeometry(0.8, 0.1)
+  // Add route color stripe using shared geometry
   const stripeMaterial = new THREE.MeshBasicMaterial({ 
-    color: train.routeColor,
-    side: THREE.DoubleSide 
+    color: train.routeColor
   })
-  const stripe = new THREE.Mesh(stripeGeometry, stripeMaterial)
+  const stripe = new THREE.Mesh(sharedStripeGeometry!, stripeMaterial)
   stripe.position.y = 0.2 // On top of train
   stripe.position.z = 0.01 // Slightly above to avoid z-fighting
   
@@ -86,5 +83,9 @@ export function disposeSharedTrainResources() {
   if (sharedTrainMaterial) {
     sharedTrainMaterial.dispose()
     sharedTrainMaterial = null
+  }
+  if (sharedStripeGeometry) {
+    sharedStripeGeometry.dispose()
+    sharedStripeGeometry = null
   }
 }

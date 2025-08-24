@@ -53,6 +53,12 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
     trainPassengers?: THREE.InstancedMesh
   }>({})
   
+  // Performance optimization: reusable matrix objects and material caching
+  const matrixRef = useRef(new THREE.Matrix4())
+  const previousGameStateRef = useRef<string>('')
+  const lastRenderTime = useRef(0)
+  const distressMaterialCacheRef = useRef<Map<string, THREE.MeshBasicMaterial>>(new Map())
+  
   // Initialize the layer once  
   useEffect(() => {
     if (!mapContext?.map) return
@@ -183,12 +189,12 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
         sharedGeometriesRef.current.unconnectedRingGeometry = new THREE.RingGeometry(
           2.5, // Inner radius (larger than selection ring)
           3.0, // Outer radius  
-          16   // Segments
+          12   // Reduced segments for performance
         )
         sharedGeometriesRef.current.unconnectedRingMaterial = new THREE.MeshBasicMaterial({
           color: 0x6975dd, // Purple color
           transparent: true,
-          opacity: 0.8,
+          opacity: 0.6, // Slightly more subtle
           side: THREE.DoubleSide
         })
         
@@ -302,6 +308,30 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
         return
       }
       
+      // Performance optimization: throttle renders and detect state changes
+      const now = Date.now()
+      const gameStateHash = JSON.stringify({
+        stationCount: stations.length,
+        routeCount: routes.length,
+        trainCount: trains.length,
+        selectedStation: selectedStationId,
+        stationPassengers: stations.map(s => `${s.id}:${s.passengerCount || 0}`).join(','),
+        trainPassengers: trains.map(t => `${t.id}:${t.passengerCount}`).join(',')
+      })
+      
+      // Check if we have distressed stations (need animation updates)
+      const hasDistressedStations = stations.some(s => (s.passengerCount || 0) >= 15)
+      
+      // Skip render if nothing changed and sufficient time hasn't passed
+      // Allow faster updates for animations, slower for static content
+      const minRenderInterval = hasDistressedStations ? 50 : 200 // 20fps for animations, 5fps for static
+      if (gameStateHash === previousGameStateRef.current && now - lastRenderTime.current < minRenderInterval) {
+        return
+      }
+      
+      previousGameStateRef.current = gameStateHash
+      lastRenderTime.current = now
+      
       const scene = layerRef.current.scene
     
     // Clear existing game objects with proper disposal
@@ -386,9 +416,8 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
           )
           const ringMaterial = new THREE.MeshPhysicalMaterial({ 
             color: route.color, // Keep original vibrant route color
-            emissive: new THREE.Color(route.color).multiplyScalar(0.4), // Moderate emissive glow
-            transparent: true,
-            opacity: 0.9,
+            emissive: new THREE.Color(route.color).multiplyScalar(0.3), // Moderate emissive glow for visibility
+            transparent: false, // Make opaque to fix rendering order
             roughness: 0.15, // Very smooth plastic
             metalness: 0.0, // Non-metallic
             envMapIntensity: 0.8, // Strong reflections
@@ -434,7 +463,7 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
         stationObj.object3D.add(selectionRing)
       }
       
-      // Add unconnected station indicator
+      // Add unconnected station indicator with optimized animation
       if (isUnconnected && 
           sharedGeometriesRef.current.unconnectedRingGeometry && 
           sharedGeometriesRef.current.unconnectedRingMaterial) {
@@ -445,9 +474,10 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
         unconnectedRing.position.z = 0.02 // Below selection ring but above station
         unconnectedRing.userData = { type: 'unconnected-ring' }
         
-        // Add pulsing animation for better visibility
-        const time = Date.now() * 0.003
-        const pulse = 0.8 + Math.sin(time) * 0.2 // Pulse between 0.6 and 1.0
+        // Optimized pulsing animation - use station ID hash for staggered animation
+        const stationHash = station.id.split('').reduce((a, b) => a + b.charCodeAt(0), 0)
+        const time = Date.now() * 0.002 + (stationHash % 10) * 0.314 // Slower, staggered animation
+        const pulse = 0.85 + Math.sin(time) * 0.15 // Smaller pulse range (0.7 to 1.0)
         unconnectedRing.scale.setScalar(pulse)
         
         stationObj.object3D.add(unconnectedRing)
@@ -474,12 +504,22 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
           const saturation = 0.8 + 0.2 * distressIntensity; // Gets more saturated
           const lightness = 0.4 + 0.2 * (1 + heatPulse); // Pulses brightness
           
-          const distressMaterial = new THREE.MeshBasicMaterial({
-            color: new THREE.Color().setHSL(redHue, saturation, lightness),
-            transparent: true,
-            opacity: 0.85 + 0.15 * distressIntensity, // Gets more opaque with more passengers
-            side: THREE.DoubleSide
-          });
+          // Performance optimization: cache distress materials
+          const materialKey = `${Math.round(redHue * 100)}-${Math.round(saturation * 100)}-${Math.round(lightness * 100)}-${Math.round((0.85 + 0.15 * distressIntensity) * 100)}`
+          let distressMaterial = distressMaterialCacheRef.current.get(materialKey)
+          if (!distressMaterial) {
+            distressMaterial = new THREE.MeshBasicMaterial({
+              color: new THREE.Color().setHSL(redHue, saturation, lightness),
+              transparent: true,
+              opacity: 0.85 + 0.15 * distressIntensity, // Gets more opaque with more passengers
+              side: THREE.DoubleSide
+            });
+            distressMaterialCacheRef.current.set(materialKey, distressMaterial)
+          } else {
+            // Update existing material color for animation
+            distressMaterial.color.setHSL(redHue, saturation, lightness)
+            distressMaterial.opacity = 0.85 + 0.15 * distressIntensity
+          }
           
           stationMesh.material = distressMaterial;
         }
@@ -621,146 +661,140 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
       })
     }
     
-    // Add trains
+    // Add trains and render all riding passengers using a single InstancedMesh
     trains.forEach(train => {
       const route = routes.find(r => r.id === train.routeId)
       if (!route || route.stations.length < 2) return
-      
-      const routeStations = route.stations.map(stationId => 
-        stations.find(s => s.id === stationId)
-      ).filter((station): station is { id: string; position: LngLat; color: string; passengerCount: number } => 
-        station !== undefined
-      )
-      
+      const routeStations = route.stations.map(stationId => stations.find(s => s.id === stationId)).filter(Boolean)
       if (routeStations.length < 2) return
-      
-      // Calculate train position using train movement network for accurate positioning
       if (!trainMovementNetwork) return
       const trainLngLat = getTrainPositionFromMovementNetwork(trainMovementNetwork, train.routeId, train.position)
       const trainMercator = MercatorCoordinate.fromLngLat([trainLngLat.lng, trainLngLat.lat], 0)
-      
       const x = trainMercator.x
       const y = trainMercator.y
       const z = trainMercator.z
-      
       const geometry = new THREE.BoxGeometry(2, 2, 1)
       const material = new THREE.MeshPhysicalMaterial({ 
-        color: route.color, // Keep original vibrant route color
-        emissive: new THREE.Color(route.color).multiplyScalar(0.3), // Moderate emissive glow
-        roughness: 0.2, // Smooth plastic
-        metalness: 0.0, // Non-metallic
-        envMapIntensity: 0.7, // Good reflections
-        clearcoat: 0.4, // Glossy clearcoat
-        clearcoatRoughness: 0.03, // Very smooth clearcoat
-        side: THREE.DoubleSide // Render both sides
+        color: route.color,
+        emissive: new THREE.Color(route.color).multiplyScalar(0.3),
+        roughness: 0.2,
+        metalness: 0.0,
+        envMapIntensity: 0.7,
+        clearcoat: 0.4,
+        clearcoatRoughness: 0.03,
+        side: THREE.DoubleSide
       })
       const cube = new THREE.Mesh(geometry, material)
       cube.castShadow = true
       cube.receiveShadow = true
-      
+      // Add train mesh to scene
+      cube.position.set(x, y, z)
+      const scale = trainMercator.meterInMercatorCoordinateUnits() * 30
+      cube.scale.setScalar(scale)
+      cube.userData = { type: 'train', trainId: train.id }
       // Add passenger indicators as dark grey dots above the train (simplified for performance)
       if (train.passengerCount > 0) {
-        // Cap visual passenger display to prevent performance issues
         const maxVisualPassengers = Math.min(train.passengerCount, PERFORMANCE_CONFIG.maxTrainPassengers)
-        
         for (let passengerIndex = 0; passengerIndex < maxVisualPassengers; passengerIndex++) {
           // Reuse shared geometry and material
           const dot = new THREE.Mesh(
             sharedGeometriesRef.current.trainPassengerGeometry!,
             sharedGeometriesRef.current.trainPassengerMaterial!
           )
-          
           // Position dots in a flat grid pattern above the train
           const dotsPerRow = 3
           const row = Math.floor(passengerIndex / dotsPerRow)
           const col = passengerIndex % dotsPerRow
-          
           // Arrange dots in a flat grid above the train (X-Y plane)
           dot.position.set(
             (col - 1) * 0.5,     // X: -0.5, 0, 0.5 for columns 0, 1, 2
             (row - 0.5) * 0.5,   // Y: -0.25, 0.25 for rows 0, 1 (centered)
             1.2                  // Z: Fixed height above the train
           )
-          
+          dot.scale.set(1.2, 1.2, 1.2) // 20% larger
           cube.add(dot)
         }
-        
         // Add a text indicator for high passenger counts
         if (train.passengerCount > PERFORMANCE_CONFIG.maxTrainPassengers) {
           // You could add a sprite or simple text mesh here for counts > maxTrainPassengers
           // For now, we'll just cap at maxTrainPassengers visual passengers
         }
       }
-      
-      cube.position.set(x, y, z)
-      
-      const scale = trainMercator.meterInMercatorCoordinateUnits() * 30
-      cube.scale.setScalar(scale)
-      
-      cube.userData = { type: 'train', trainId: train.id }
       scene.add(cube)
     })
     
     // Add passengers around stations using instanced rendering for performance
     const totalPassengers = stations.reduce((sum: number, station) => sum + (station.passengerCount || 0), 0)
-    
-    if (totalPassengers > 0) {
-      // Cap total rendered passengers for performance
-      const maxRenderPassengers = Math.min(totalPassengers, PERFORMANCE_CONFIG.maxRenderedPassengers)
-      
-      // Remove old instanced mesh if it exists
-      if (instancedMeshesRef.current.stationPassengers) {
-        scene.remove(instancedMeshesRef.current.stationPassengers)
+    const maxRenderPassengers = Math.min(totalPassengers, PERFORMANCE_CONFIG.maxRenderedPassengers)
+    const geometry = sharedGeometriesRef.current.passengerGeometry!
+    const material = sharedGeometriesRef.current.passengerMaterial!
+
+    let needsNewMesh = false
+    const prevMesh = instancedMeshesRef.current.stationPassengers
+    if (!prevMesh) {
+      needsNewMesh = true
+    } else if (
+      prevMesh.count !== maxRenderPassengers ||
+      prevMesh.geometry !== geometry ||
+      prevMesh.material !== material
+    ) {
+      // Remove and dispose old mesh if count/geometry/material changed
+      scene.remove(prevMesh)
+      prevMesh.dispose()
+      needsNewMesh = true
+    }
+
+    if (totalPassengers > 0 && maxRenderPassengers > 0) {
+      let instancedMesh = instancedMeshesRef.current.stationPassengers
+      if (needsNewMesh) {
+        instancedMesh = new THREE.InstancedMesh(
+          geometry,
+          material,
+          maxRenderPassengers
+        )
+        instancedMesh.userData = { type: 'passengers' }
+        scene.add(instancedMesh)
+        instancedMeshesRef.current.stationPassengers = instancedMesh
+      } else if (instancedMesh && !scene.children.includes(instancedMesh)) {
+        // If mesh exists but is not in the scene, add it
+        scene.add(instancedMesh)
       }
-      
-      // Create instanced mesh for all station passengers
-      const instancedMesh = new THREE.InstancedMesh(
-        sharedGeometriesRef.current.passengerGeometry!,
-        sharedGeometriesRef.current.passengerMaterial!,
-        maxRenderPassengers
-      )
-      
-      const matrix = new THREE.Matrix4()
+      // Performance optimization: reuse matrix object
+      const matrix = matrixRef.current
       let instanceIndex = 0
-      
-      // Place passengers for each station
       stations.forEach(station => {
         if (station.passengerCount && station.passengerCount > 0 && instanceIndex < maxRenderPassengers) {
           const mercator = MercatorCoordinate.fromLngLat([station.position.lng, station.position.lat], 0)
           const meterUnit = mercator.meterInMercatorCoordinateUnits()
           const scale = meterUnit * 50
           const ringRadius = 80 * meterUnit
-          
-          // Calculate how many passengers to render for this station
           const passengersToRender = Math.min(
             station.passengerCount,
             maxRenderPassengers - instanceIndex,
-            PERFORMANCE_CONFIG.maxPassengersPerStation // Max passengers per station for visual clarity
+            PERFORMANCE_CONFIG.maxPassengersPerStation
           )
-          
           for (let idx = 0; idx < passengersToRender; idx++) {
-            const angle = (idx / Math.max(passengersToRender, 8)) * Math.PI * 2 // Spread around circle
+            const angle = (idx / Math.max(passengersToRender, 8)) * Math.PI * 2
             const offsetX = Math.cos(angle) * ringRadius
             const offsetY = Math.sin(angle) * ringRadius
-            
             matrix.makeScale(scale, scale, scale)
             matrix.setPosition(
               mercator.x + offsetX,
               mercator.y + offsetY,
               mercator.z + meterUnit * 5
             )
-            
-            instancedMesh.setMatrixAt(instanceIndex, matrix)
+            instancedMesh!.setMatrixAt(instanceIndex, matrix)
             instanceIndex++
           }
         }
       })
-      
-      // Update the instance matrix
-      instancedMesh.instanceMatrix.needsUpdate = true
-      instancedMesh.userData = { type: 'passengers' }
-      scene.add(instancedMesh)
-      instancedMeshesRef.current.stationPassengers = instancedMesh
+  instancedMesh!.count = instanceIndex
+      instancedMesh!.instanceMatrix.needsUpdate = true
+    } else if (prevMesh) {
+      // Remove and dispose if no passengers
+      scene.remove(prevMesh)
+      prevMesh.dispose()
+      instancedMeshesRef.current.stationPassengers = undefined
     }
     }
     
@@ -772,6 +806,10 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
     return () => {
       // Dispose all shared Three.js resources using factories
       disposeAllSharedThreeResources();
+      
+      // Performance optimization: dispose cached materials
+      distressMaterialCacheRef.current.forEach(material => material.dispose())
+      distressMaterialCacheRef.current.clear()
       
       // Remove Three.js layer from map if it exists
       if (mapContext?.map && layerRef.current && mapContext.map.getLayer('stations-3d')) {

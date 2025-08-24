@@ -2,6 +2,37 @@ import * as THREE from 'three'
 import type { LngLat } from '../types'
 import type { ThreeJsObject } from '../components/MlThreeJsLayer'
 
+// Shared route materials for performance
+let sharedTubeMaterial: THREE.MeshLambertMaterial | null = null
+let sharedLineMaterial: THREE.LineBasicMaterial | null = null
+let sharedRingMaterial: THREE.MeshLambertMaterial | null = null
+
+// Initialize shared resources once
+function initializeSharedResources() {
+  if (!sharedTubeMaterial) {
+    sharedTubeMaterial = new THREE.MeshLambertMaterial({
+      color: 0xffffff, // Will be overridden per route
+      transparent: false
+    })
+  }
+  
+  if (!sharedLineMaterial) {
+    sharedLineMaterial = new THREE.LineBasicMaterial({
+      color: 0xffffff, // Will be overridden per route
+      linewidth: 4, // Reduced from 8
+      transparent: false
+    })
+  }
+  
+  if (!sharedRingMaterial) {
+    sharedRingMaterial = new THREE.MeshLambertMaterial({
+      color: 0xffffff, // Will be overridden per ring
+      transparent: true,
+      opacity: 0.9
+    })
+  }
+}
+
 export interface RouteRenderData {
   coordinates: LngLat[]
   color: string
@@ -52,20 +83,13 @@ function createParallelRoute(group: THREE.Group, routeData: RouteRenderData) {
     false // not closed
   )
   
-  const material = new THREE.MeshPhysicalMaterial({
-    color: routeData.color,
-    emissive: new THREE.Color(routeData.color).multiplyScalar(0.3),
-    roughness: 0.1,
-    metalness: 0.0,
-    envMapIntensity: 0.7,
-    clearcoat: 0.4,
-    clearcoatRoughness: 0.02,
-    side: THREE.DoubleSide
-  })
+  initializeSharedResources()
+  
+  // Clone and customize material for this route
+  const material = sharedTubeMaterial!.clone()
+  material.color.setStyle(routeData.color)
   
   const mesh = new THREE.Mesh(tubeGeometry, material)
-  mesh.castShadow = true
-  mesh.receiveShadow = false
   
   group.add(mesh)
 }
@@ -84,13 +108,12 @@ function createSimpleRoute(group: THREE.Group, routeData: RouteRenderData) {
       new THREE.Vector3(end.lng, end.lat, 0)
     ]
     
+    initializeSharedResources()
+    
     const geometry = new THREE.BufferGeometry().setFromPoints(points)
-    const material = new THREE.LineBasicMaterial({
-      color: routeData.color,
-      linewidth: 8,
-      transparent: false,
-      opacity: 1.0
-    })
+    // Clone and customize material for this route segment
+    const material = sharedLineMaterial!.clone()
+    material.color.setStyle(routeData.color)
     
     const line = new THREE.Line(geometry, material)
     line.userData = { type: 'route-simple', routeId: routeData.routeId, segment: i }
@@ -108,29 +131,22 @@ export function createRouteRingObject(config: {
   opacity?: number
   emissiveIntensity?: number
 }): ThreeJsObject {
+  initializeSharedResources()
+  
   const ringGeometry = new THREE.RingGeometry(
     config.radius, // Inner radius
     config.radius + config.thickness, // Outer radius
-    64 // High segment count for smooth appearance
+    32 // Reduced segment count
   )
   
-  const ringMaterial = new THREE.MeshPhysicalMaterial({ 
-    color: config.color,
-    emissive: new THREE.Color(config.color).multiplyScalar(config.emissiveIntensity || 0.4),
-    transparent: true,
-    opacity: config.opacity || 0.9,
-    roughness: 0.15,
-    metalness: 0.0,
-    envMapIntensity: 0.8,
-    clearcoat: 0.5,
-    clearcoatRoughness: 0.02,
-    side: THREE.DoubleSide
-  })
+  // Clone and customize material for this ring
+  const ringMaterial = sharedRingMaterial!.clone()
+  ringMaterial.color.setStyle(config.color)
+  ringMaterial.opacity = config.opacity || 0.9
   
   const ring = new THREE.Mesh(ringGeometry, ringMaterial)
   ring.rotation.x = Math.PI / 2 // Lay flat
   ring.position.z = 0.03 // Slightly above ground
-  ring.castShadow = true
   
   ring.userData = { 
     type: 'selection-ring',
@@ -143,5 +159,21 @@ export function createRouteRingObject(config: {
     altitude: 0,
     scale: 50,
     object3D: ring
+  }
+}
+
+// Dispose shared resources (call on app cleanup)
+export function disposeSharedRouteResources() {
+  if (sharedTubeMaterial) {
+    sharedTubeMaterial.dispose()
+    sharedTubeMaterial = null
+  }
+  if (sharedLineMaterial) {
+    sharedLineMaterial.dispose()
+    sharedLineMaterial = null
+  }
+  if (sharedRingMaterial) {
+    sharedRingMaterial.dispose()
+    sharedRingMaterial = null
   }
 }

@@ -41,7 +41,7 @@ function initializeSharedResources() {
   }
 }
 
-// Create distress particle effect
+// Simplified distress particle effect (single particle instead of multiple)
 export function createDistressParticleObject(config: {
   id: string
   position: LngLat
@@ -50,30 +50,9 @@ export function createDistressParticleObject(config: {
 }): ThreeJsObject {
   initializeSharedResources()
   
-  const group = new THREE.Group()
-  const particleCount = config.particleCount || 8
-  const spread = config.spread || 2
-  
-  // Create multiple small particles around the position
-  for (let i = 0; i < particleCount; i++) {
-    const particle = new THREE.Mesh(sharedDistressGeometry!, sharedDistressMaterial!)
-    
-    // Random position around the center
-    const angle = (i / particleCount) * Math.PI * 2
-    const distance = Math.random() * spread
-    particle.position.x = Math.cos(angle) * distance
-    particle.position.y = Math.sin(angle) * distance
-    particle.position.z = Math.random() * 0.5 // Random height variation
-    
-    // Random rotation
-    particle.rotation.x = Math.random() * Math.PI
-    particle.rotation.y = Math.random() * Math.PI
-    particle.rotation.z = Math.random() * Math.PI
-    
-    group.add(particle)
-  }
-  
-  group.userData = { 
+  // Create single small particle instead of multiple particles
+  const particle = new THREE.Mesh(sharedDistressGeometry!, sharedDistressMaterial!)
+  particle.userData = { 
     type: 'distress-particle',
     stationId: config.id 
   }
@@ -82,12 +61,12 @@ export function createDistressParticleObject(config: {
     id: config.id,
     position: config.position,
     altitude: 3, // 3m above ground
-    scale: 50,
-    object3D: group
+    scale: 30, // Smaller scale
+    object3D: particle
   }
 }
 
-// Create distress glow effect
+// Minimal distress glow effect (much smaller and subtle)
 export function createDistressGlowObject(config: {
   id: string
   position: LngLat
@@ -96,7 +75,7 @@ export function createDistressGlowObject(config: {
   initializeSharedResources()
   
   const glowMesh = new THREE.Mesh(sharedGlowGeometry!, sharedGlowMaterial!)
-  glowMesh.scale.setScalar(config.intensity || 1)
+  glowMesh.scale.setScalar((config.intensity || 1) * 0.3) // Much smaller
   
   glowMesh.userData = { 
     type: 'distress-glow',
@@ -107,33 +86,47 @@ export function createDistressGlowObject(config: {
     id: config.id + '-glow',
     position: config.position,
     altitude: 0,
-    scale: 50,
+    scale: 25, // Smaller scale
     object3D: glowMesh
   }
 }
 
-// Create unconnected station ring
+// Shared unconnected ring resources
+let sharedUnconnectedGeometry: THREE.RingGeometry | null = null
+let sharedUnconnectedMaterial: THREE.MeshBasicMaterial | null = null
+
+// Initialize unconnected ring resources
+function initializeUnconnectedResources() {
+  if (!sharedUnconnectedGeometry) {
+    sharedUnconnectedGeometry = new THREE.RingGeometry(
+      2.2, // Inner radius
+      2.5, // Outer radius
+      16 // Segments
+    )
+  }
+  
+  if (!sharedUnconnectedMaterial) {
+    sharedUnconnectedMaterial = new THREE.MeshBasicMaterial({
+      color: 0x6975dd, // Purple color
+      transparent: true,
+      opacity: 0.8,
+      side: THREE.DoubleSide
+    })
+  }
+}
+
+// Subtle unconnected station ring (smaller and less prominent)
 export function createUnconnectedRingObject(config: {
   id: string
   position: LngLat
   radius?: number
 }): ThreeJsObject {
-  const ringGeometry = new THREE.RingGeometry(
-    config.radius || 2.2, // Inner radius
-    (config.radius || 2.2) + 0.3, // Outer radius
-    16 // Segments
-  )
+  initializeUnconnectedResources()
   
-  const ringMaterial = new THREE.MeshBasicMaterial({
-    color: 0x6975dd, // Purple color
-    transparent: true,
-    opacity: 0.8,
-    side: THREE.DoubleSide
-  })
-  
-  const ring = new THREE.Mesh(ringGeometry, ringMaterial)
+  const ring = new THREE.Mesh(sharedUnconnectedGeometry!, sharedUnconnectedMaterial!)
   ring.rotation.x = Math.PI / 2 // Lay flat
   ring.position.z = 0.02 // Slightly above ground
+  ring.scale.setScalar(0.6) // Make smaller and more subtle
   
   ring.userData = { 
     type: 'unconnected-ring',
@@ -144,7 +137,7 @@ export function createUnconnectedRingObject(config: {
     id: config.id + '-unconnected',
     position: config.position,
     altitude: 0,
-    scale: 50,
+    scale: 35, // Smaller scale
     object3D: ring
   }
 }
@@ -166,5 +159,13 @@ export function disposeSharedParticleResources() {
   if (sharedGlowMaterial) {
     sharedGlowMaterial.dispose()
     sharedGlowMaterial = null
+  }
+  if (sharedUnconnectedGeometry) {
+    sharedUnconnectedGeometry.dispose()
+    sharedUnconnectedGeometry = null
+  }
+  if (sharedUnconnectedMaterial) {
+    sharedUnconnectedMaterial.dispose()
+    sharedUnconnectedMaterial = null
   }
 }
