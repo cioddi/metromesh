@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMap } from '@mapcomponents/react-maplibre'
 import * as THREE from 'three'
 import { MercatorCoordinate } from 'maplibre-gl'
@@ -29,6 +29,9 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
   } = useGameStore()
   const mapContext = useMap()
   const layerRef = useRef<any>(null) // eslint-disable-line @typescript-eslint/no-explicit-any
+  // Mobile reinitialization trigger - while this is a state for side effects pattern,
+  // it's the most reliable way to trigger complete Three.js layer recreation on mobile orientation changes
+  const [mobileReinitKey, setMobileReinitKey] = useState(0)
   const raycasterRef = useRef<THREE.Raycaster | null>(null)
   const mouseRef = useRef<THREE.Vector2 | null>(null)
   
@@ -65,12 +68,16 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
     
     const map = mapContext.map
     
-    // Don't reinitialize if already done
+    // Clean up existing layer on mobile reinit
     if (map.getLayer('stations-3d')) {
-      // Get existing layer reference
-      const existingLayer = map.getLayer('stations-3d') as any // eslint-disable-line @typescript-eslint/no-explicit-any
-      layerRef.current = existingLayer
-      return
+      map.removeLayer('stations-3d')
+      console.log('Cleaned up existing Three.js layer for mobile reinit')
+    }
+    
+    // Clean up existing resources on mobile reinit
+    if (layerRef.current?.renderer) {
+      layerRef.current.renderer.dispose()
+      console.log('Cleaned up Three.js renderer for mobile reinit')
     }
     
     console.log('Setting up Three.js layer with map:', map)
@@ -232,42 +239,42 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
     layerRef.current = customLayer
     map.addLayer(customLayer)
     console.log('Three.js layer added to map')
-  }, [mapContext?.map])
+  }, [mapContext?.map, mobileReinitKey])
 
-  // Handle resize events to prevent Three.js distortion
+  // Handle resize events - mobile requires complete layer reinitialization
   useEffect(() => {
     if (!mapContext?.map) return
 
     const map = mapContext.map
-    const canvas = map.getCanvas()
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
 
     const handleResize = () => {
-      console.log('RESIZE')
-      if (layerRef.current?.renderer) {
-        const renderer = layerRef.current.renderer
-        // Get the current canvas size
-        const width = canvas.clientWidth
-        const height = canvas.clientHeight
+      console.log('RESIZE detected')
+      
+      if (isMobile) {
+        console.log('Mobile detected - will reinitialize Three.js layer')
         
-        // Update the Three.js renderer size
-        renderer.setSize(width, height, false) // false prevents setting CSS size
-        
-        // Force a repaint
-        map.triggerRepaint()
+        // Wait for orientation change to complete, then trigger reinit
+        setTimeout(() => {
+          console.log('Triggering Three.js layer reinitialization')
+          setMobileReinitKey(prev => prev + 1)
+        }, 500)
+      } else {
+        // Desktop: simple renderer resize
+        if (layerRef.current?.renderer) {
+          const renderer = layerRef.current.renderer
+          const canvas = map.getCanvas()
+          renderer.setSize(canvas.clientWidth, canvas.clientHeight, false)
+          map.triggerRepaint()
+        }
       }
     }
 
-    console.log('set resize handler')
-    // Listen to map resize events
+    // Listen to resize events
     map.on('resize', handleResize)
 
-    // Also listen to window resize for additional safety
-    //window.addEventListener('resize', handleResize)
-
     return () => {
-    console.log('remove resize handler')
       map.off('resize', handleResize)
-      //window.removeEventListener('resize', handleResize)
     }
   }, [mapContext?.map])
 
