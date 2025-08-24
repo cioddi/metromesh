@@ -1,5 +1,6 @@
 import { MapLibreMap } from "@mapcomponents/react-maplibre";
 import { MAP_CENTER, GAME_CONFIG } from "../config/gameConfig";
+import mapStyle from "../config/style.json";
 
 export default function MapComponent() {
   return (
@@ -7,7 +8,8 @@ export default function MapComponent() {
       <MapLibreMap
         options={{
           zoom: GAME_CONFIG.initialZoom,
-          style: "https://wms.wheregroup.com/tileserver/style/osm-bright.json",
+          // @ts-expect-error: mapStyle version property type mismatch with StyleSpecification
+          style: mapStyle,
           center: [MAP_CENTER.lng, MAP_CENTER.lat],
           maxZoom: GAME_CONFIG.maxZoom,
           maxPitch: 0,

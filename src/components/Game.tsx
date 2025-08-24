@@ -105,14 +105,15 @@ export default function Game() {
       ];
       // Query only the relevant highway layers in the bbox
       const highwayLayers = [
-        'highway-path',
-        'highway-motorway-link',
-        'highway-link',
-        'highway-minor',
-        'highway-secondary-tertiary',
-        'highway-primary',
-        'highway-trunk',
-        'highway-motorway'
+        'highway_path',
+        'highway_motorway_link',
+        'highway_link',
+        'highway_minor',
+        'highway_major_inner',
+        'highway_secondary_tertiary',
+        'highway_primary',
+        'highway_trunk',
+        'highway_motorway'
       ];
       const features = mapHook.map.queryRenderedFeatures(bbox, {
         layers: highwayLayers
