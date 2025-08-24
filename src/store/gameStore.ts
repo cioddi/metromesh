@@ -2,61 +2,11 @@ import { create } from 'zustand'
 import type { LngLat } from '../types'
 import { TRAIN_CONFIG } from '../config/gameConfig'
 import { generateStationPosition, calculateDistance } from '../utils/stationPositioning'
-import { calculateTrainMovementNetwork, type TrainMovementNetwork } from '../utils/routeNetworkCalculator'
-import { calculateParallelRouteVisualization, generateVisualRouteNetwork, type VisualRouteNetwork } from '../utils/parallelRouteVisualizer'
+import { calculateTrainMovementNetwork } from '../utils/routeNetworkCalculator'
+import { calculateParallelRouteVisualization, generateVisualRouteNetwork } from '../utils/parallelRouteVisualizer'
+import type { Station, Route, Train, GameState } from '../types'
 
-interface Station {
-  id: string
-  position: LngLat
-  color: string
-  passengerCount: number // Simple count instead of complex array
-  overloadedSince?: number // Timestamp when station first reached 20+ passengers
-  buildingDensity?: number // Building count in area (0-1 normalized)
-  name?: string // Optional station name from suburb feature
-}
 
-interface Route {
-  id: string
-  color: string
-  stations: string[]
-}
-
-interface Train {
-  id: string
-  routeId: string
-  position: number
-  direction: 1 | -1
-  passengerCount: number // Simple count
-  capacity: number
-  speedKmh: number
-  waitTime: number // Time to wait at station (in game loops)
-  lastStationVisited: number // Index of last station where passengers were exchanged
-}
-
-interface GameState {
-  stations: Station[]
-  routes: Route[]
-  trains: Train[]
-  score: number
-  isPlaying: boolean
-  gameSpeed: number
-  selectedStationId: string | null
-  isGameOver: boolean
-  gameOverReason: string | null
-  gameOverStats: {
-    finalScore: number
-    totalStations: number
-    totalRoutes: number
-    gameTime: number
-  } | null
-  gameStartTime: number
-  lastStationSpawnTime: number
-  // Dual caching system - completely separate networks
-  trainMovementNetwork: TrainMovementNetwork | null
-  visualRouteNetwork: VisualRouteNetwork | null
-  // Visualization toggle
-  useParallelVisualization: boolean
-}
 
 interface GameActions {
   addStation: (bounds: { southwest: LngLat; northeast: LngLat }, position?: LngLat, waterCheckFn?: (position: LngLat) => boolean, transportationDensityFn?: (position: LngLat) => number, isInitialStation?: boolean, name?: string) => void

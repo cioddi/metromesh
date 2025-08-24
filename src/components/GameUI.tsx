@@ -3,7 +3,7 @@ import type { GameState } from '../types';
 import { useGameStore } from '../store/gameStore';
 
 interface GameUIProps {
-  gameState: GameState;
+  gameState: Pick<GameState, 'score' | 'stations' | 'routes' | 'trains' | 'isPlaying' | 'gameSpeed'>;
   onReset: () => void;
   onCreateRoute: (stationIds: string[]) => void;
   onStationSelectFromList?: (stationId: string) => void;
