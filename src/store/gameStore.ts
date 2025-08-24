@@ -276,7 +276,11 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
         newWaitTime--
       } else {
         // Normal movement between stations
-        newLastStationVisited = -1; // Reset when actively moving
+        // Only reset lastStationVisited when train is far enough from any station
+        // to prevent multiple visits to the same station due to position oscillation
+        if (distanceToNearestStation > 0.1) {
+          newLastStationVisited = -1; // Reset when sufficiently far from any station
+        }
         
         // Calculate movement step based on realistic train speed
         const speedMeterPerLoop = speedMs * (gameLoopInterval / 1000);
