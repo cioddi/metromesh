@@ -23,20 +23,39 @@
 .game-ui-mobile .legend-header {
   background: #fff;
   color: #222;
-  padding: 12px 8px 8px 8px;
-  text-align: center;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   border-radius: 0 0 16px 16px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   pointer-events: auto;
 }
 .game-ui-mobile .logo {
-  height: 68px;
+  height: 48px;
   margin-bottom: 0px;
 }
 .game-ui-mobile .stats {
   display: flex;
-  justify-content: space-around;
-  gap: 8px;
+  gap: 12px;
+}
+
+.game-ui-mobile .stat-item {
+  min-width: 0;
+  flex: 1;
+}
+
+.game-ui-mobile .stat-value {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.game-ui-mobile .stat-label {
+  font-size: 10px;
+  opacity: 0.9;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 .game-ui-mobile-buttons {
   display: flex;
@@ -834,8 +853,31 @@ body {
     height: 24px;
   }
 
+  .selected-station-content {
+    flex-direction: row;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .station-info-row {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    flex: 1;
+    min-height: auto;
+  }
+
   .station-info-row .station-name {
-    font-size: 14px;
+    font-size: 11px;
+    margin-bottom: 4px;
+    order: 2;
+  }
+
+  .passenger-badge,
+  .route-indicators,
+  .density-info {
+    order: 1;
+    margin-bottom: 4px;
   }
 
   .route-dot {

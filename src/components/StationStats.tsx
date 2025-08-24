@@ -52,14 +52,14 @@ export default function StationStats() {
       
       <div className="selected-station-content">
         <div className="station-info-row">
-          <span className="station-name">Waiting Passengers</span>
+          <span className="station-name">Passengers</span>
           {selectedStation.passengerCount > 0 && (
             <div className="passenger-badge">{selectedStation.passengerCount}</div>
           )}
         </div>
         
         <div className="station-info-row">
-          <span className="station-name">Connected Routes</span>
+          <span className="station-name">Routes</span>
           <div className="route-indicators">
             {connectedRoutes.map(route => (
               <div 
@@ -72,7 +72,7 @@ export default function StationStats() {
         </div>
         
         <div className="station-info-row">
-          <span className="station-name">Population Density</span>
+          <span className="station-name">Population</span>
           <div className="density-info">
             <span className="density-emoji">{getDensityEmoji(selectedStation.buildingDensity)}</span>
             <span className="density-text">{getDensityDescription(selectedStation.buildingDensity)}</span>
