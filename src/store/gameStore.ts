@@ -294,7 +294,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     )
     
     if (overloadedStation && state.isPlaying) {
-      get().triggerGameOver(`Station ${overloadedStation.id.slice(-4)} was overloaded for too long!`)
+      get().triggerGameOver(`Station ${overloadedStation.name} was overloaded for too long!`)
     }
   },
 

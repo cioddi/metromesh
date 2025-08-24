@@ -39,3 +39,6 @@ coverage/
 
 cypress/screenshots
 .env
+cities_200k.json
+cities500.txt
+countryInfo.txt

@@ -54,9 +54,6 @@ const RouteSelectionPopup: React.FC<RouteSelectionPopupProps> = ({
         {/* Header matching metro-legend style */}
         <div
           style={{
-            background:
-              "linear-gradient(180deg, #ffffff 0%,#ffffff 55%, #36b6e7 70%, #764ba2 90%)",
-            color: "white",
             textShadow: "0 1px 2px rgba(0, 0, 0, 0.2)",
             padding: "16px 16px 8px 16px",
             textAlign: "center",
