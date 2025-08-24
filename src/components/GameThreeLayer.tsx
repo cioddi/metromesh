@@ -426,6 +426,11 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
     
     const map = mapContext.map
     
+    // Clear existing object references on reinitialization (mobile resize)
+    stationObjects.current.clear()
+    trainObjects.current.clear()
+    routeObjects.current.clear()
+    
     // Clean up existing layer on mobile reinit
     if (map.getLayer('stations-3d')) {
       map.removeLayer('stations-3d')

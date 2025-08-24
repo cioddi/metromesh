@@ -576,6 +576,33 @@ export default function Game() {
 
   return (
     <>
+      <MapComponent />
+      <MlGeoJsonLayer
+        geojson={stationsGeoJson}
+        layerId="stations-geojson"
+        options={{
+          paint: {
+            "circle-radius": 1,
+            "circle-color": "rgba(0,0,0,0)",
+          },
+        }}
+        type="circle"
+        labelProp="name"
+        labelOptions={{
+          layout: {
+            "text-offset": [0, 1.85],
+            "text-size": 12,
+            "text-font": ["Open Sans Regular"],
+          },
+          paint: {
+            "text-color": "#808080ff",
+            "text-halo-blur": 1,
+            "text-halo-color": "#fff",
+            "text-halo-width": 2,
+          },
+        }}
+
+      />
       <GameThreeLayer
         onStationClick={selectStation}
         selectedStationId={selectedStationId}
@@ -606,33 +633,6 @@ export default function Game() {
       <StationStats />
 
       {isGameOver && <GameOverScreen />}
-      <MapComponent />
-      <MlGeoJsonLayer
-        geojson={stationsGeoJson}
-        layerId="stations-geojson"
-        options={{
-          paint: {
-            "circle-radius": 1,
-            "circle-color": "rgba(0,0,0,0)",
-          },
-        }}
-        type="circle"
-        labelProp="name"
-        labelOptions={{
-          layout: {
-            "text-offset": [0, 1.85],
-            "text-size": 12,
-            "text-font": ["Open Sans Regular"],
-          },
-          paint: {
-            "text-color": "#808080ff",
-            "text-halo-blur": 1,
-            "text-halo-color": "#fff",
-            "text-halo-width": 2,
-          },
-        }}
-
-      />
     </>
   );
 }
