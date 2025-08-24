@@ -49,9 +49,6 @@ export default function GameUI({ gameState, onStationSelectFromList }: GameUIPro
           <button onClick={() => setShowInstructions((s) => !s)}>
             Instructions
           </button>
-          <button onClick={toggleVisualization}>
-            {useParallelVisualization ? 'Simple' : 'Parallel'} View
-          </button>
         </div>
         {showStations && (
           <div className="stations-section mobile">
