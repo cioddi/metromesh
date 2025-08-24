@@ -276,7 +276,7 @@ body {
 
 /* Header with logo and stats */
 .legend-header {
-  background: linear-gradient(180deg, #ffffff 0%,#ffffff 95%, #36b6e7 100%);
+  background: linear-gradient(180deg, #ffffff 0%,#ffffff 95%, #667eea 100%);
   color: black;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   padding: 16px 16px 8px 16px;
@@ -474,7 +474,7 @@ body {
 .visualization-toggle {
   width: 100%;
   padding: 8px 12px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #667eea;
   color: white;
   border: none;
   border-radius: 8px;
@@ -484,12 +484,6 @@ body {
   transition: all 0.2s ease;
   box-shadow: 0 2px 8px rgba(102, 126, 234, 0.25);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-}
-
-.visualization-toggle:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.35);
-  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
 }
 
 .visualization-toggle:active {
@@ -643,8 +637,8 @@ body {
 }
 
 .game-over-header {
-  background: linear-gradient(135deg, #36b6e7 0%, #764ba2 100%);
-  color: white;
+  background: linear-gradient(180deg, #ffffff 0%,#ffffff 90%, #667eea 100%);
+  color: black;
   padding: 24px;
   text-align: center;
 }
@@ -714,7 +708,7 @@ body {
 }
 
 .restart-btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #667eea;
   color: white;
   border: none;
   border-radius: 8px;

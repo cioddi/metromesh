@@ -139,10 +139,10 @@ export default function Game() {
     }
   }, [stations.length]);
 
-  // Helper to get feature name from a map layer at a position
-  const getFeatureNameFromLayer = useCallback((position: LngLat, layer: string): string | undefined => {
+  // Helper to get feature names from a map layer at a position, sorted by distance
+  const getFeatureNamesFromLayer = useCallback((position: LngLat, layer: string): string[] => {
     if (!mapHook?.map) {
-      return undefined;
+      return [];
     }
     const point = mapHook.map.project([position.lng, position.lat]);
     const radius = 200; // px, increase search area
@@ -152,41 +152,37 @@ export default function Game() {
     ];
     const features = mapHook.map.queryRenderedFeatures(bbox, { layers: [layer] });
     if (!features || features.length === 0) {
-      return undefined;
+      return [];
     }
-    let minDist = Infinity;
-    let closestName = undefined;
+    // Collect all names with their distances
+    const nameDistArr: { name: string, dist: number }[] = [];
     for (const feature of features) {
       const geom = feature.geometry;
       let featureLng = undefined, featureLat = undefined;
       if (geom?.type === 'Point' && Array.isArray(geom.coordinates)) {
         [featureLng, featureLat] = geom.coordinates;
       } else if (geom?.type === 'LineString' && Array.isArray(geom.coordinates) && geom.coordinates.length) {
-        // Use midpoint of linestring
         const coords = geom.coordinates;
         const mid = coords[Math.floor(coords.length / 2)];
         featureLng = mid[0];
         featureLat = mid[1];
       } else if (geom?.type === 'Polygon' && Array.isArray(geom.coordinates) && geom.coordinates[0]?.length) {
-        // Use centroid of polygon
         const coords = geom.coordinates[0];
         const avg = coords.reduce((acc, c) => [acc[0]+c[0], acc[1]+c[1]], [0,0]);
         featureLng = avg[0]/coords.length;
         featureLat = avg[1]/coords.length;
       }
-      // Use 'name' or 'ref' property, whichever is defined
       const featureLabel = feature.properties?.name ?? feature.properties?.ref;
-      if (featureLng !== undefined && featureLat !== undefined) {
+      if (featureLabel && featureLng !== undefined && featureLat !== undefined) {
         const dx = featureLng - position.lng;
         const dy = featureLat - position.lat;
         const dist = dx*dx + dy*dy;
-        if (dist < minDist) {
-          minDist = dist;
-          closestName = featureLabel;
-        }
+        nameDistArr.push({ name: featureLabel, dist });
       }
     }
-    return closestName;
+    // Sort by distance and return unique names
+    const sorted = nameDistArr.sort((a, b) => a.dist - b.dist).map(n => n.name);
+    return Array.from(new Set(sorted));
   }, [mapHook?.map]);
 
   // Add initial stations when game starts - clean and simple approach
@@ -211,8 +207,10 @@ export default function Game() {
         const firstPos = generateStationPosition(
           [], mapBounds, isPositionOnWater, true
         );
-        const suburbName = getFeatureNameFromLayer(firstPos, 'place_suburb');
-        const highwayName = getFeatureNameFromLayer(firstPos, 'highway_name_other');
+        const suburbNameArr = getFeatureNamesFromLayer(firstPos, 'place_suburb');
+        const highwayNamesArr = getFeatureNamesFromLayer(firstPos, 'highway_name_other');
+        const suburbName = suburbNameArr[0];
+        const highwayName = highwayNamesArr[0];
         let stationName = undefined;
         if (highwayName) {
           stationName = highwayName + (suburbName ? ` (${suburbName})` : '');
@@ -227,8 +225,10 @@ export default function Game() {
             [ { id: 'station-0', position: firstPos, color: '', passengerCount: 0 } ],
             mapBounds, isPositionOnWater, true
           );
-          const suburbName2 = getFeatureNameFromLayer(secondPos, 'place_suburb');
-          const highwayName2 = getFeatureNameFromLayer(secondPos, 'highway_name_other');
+          const suburbNameArr2 = getFeatureNamesFromLayer(secondPos, 'place_suburb');
+          const highwayNamesArr2 = getFeatureNamesFromLayer(secondPos, 'highway_name_other');
+          const suburbName2 = suburbNameArr2[0];
+          const highwayName2 = highwayNamesArr2[0];
           let stationName2 = undefined;
           if (highwayName2) {
             stationName2 = highwayName2 + (suburbName2 ? ` (${suburbName2})` : '');
@@ -243,7 +243,7 @@ export default function Game() {
         }, 100);
       }
     })();
-  }, [stations.length, addStation, mapHook?.map, isPositionOnWater, getTransportationDensity, getFeatureNameFromLayer]);
+  }, [stations.length, addStation, mapHook?.map, isPositionOnWater, getTransportationDensity, getFeatureNamesFromLayer]);
 
   useEffect(() => {
     if (!isPlaying) return;
@@ -271,13 +271,25 @@ export default function Game() {
         };
         // Generate the random position here so we can query for names
         const newPos = generateStationPosition(stations, gameBounds, isPositionOnWater, false);
-        const suburbName = getFeatureNameFromLayer(newPos, 'place_suburb');
-        const highwayName = getFeatureNameFromLayer(newPos, 'highway_name_other');
+        const suburbName = getFeatureNamesFromLayer(newPos, 'place_suburb')[0];
+        const highwayNames = getFeatureNamesFromLayer(newPos, 'highway_name_other');
         let stationName = undefined;
-        if (highwayName) {
-          stationName = highwayName + (suburbName ? ` (${suburbName})` : '');
-        } else if (suburbName) {
+        // Prevent duplicate station names
+        const existingNames = new Set(stations.map(s => s.name).filter(Boolean));
+        for (let i = 0; i < highwayNames.length; i++) {
+          const candidate = highwayNames[i] + (suburbName ? ` (${suburbName})` : '');
+          if (!existingNames.has(candidate)) {
+            stationName = candidate;
+            break;
+          }
+        }
+        // If all highway+suburb combos are taken, try just the suburb
+        if (!stationName && suburbName && !existingNames.has(suburbName)) {
           stationName = suburbName;
+        }
+        // If still not unique, fallback to a numbered name
+        if (!stationName) {
+          stationName = `Station ${stations.length + 1}`;
         }
         addStation(gameBounds, newPos, isPositionOnWater, getTransportationDensity, false, stationName);
       }
@@ -307,7 +319,7 @@ export default function Game() {
     isPositionOnWater,
     getTransportationDensity,
     mapHook.map,
-    getFeatureNameFromLayer
+    getFeatureNamesFromLayer
   ]);
 
 
