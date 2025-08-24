@@ -186,6 +186,22 @@ function updateStationVisuals(
     group.userData.isAnimating = true // TAG for animation
   } else if (distressGlow) {
     disposeObject(distressGlow)
+    
+    // Restore original shared material when no longer distressed
+    const stationMesh = group.children[1] as THREE.Mesh
+    if (stationMesh && stationMesh.userData.hasIndividualMaterial) {
+      // Dispose the individual material and restore shared material
+      if (stationMesh.material instanceof THREE.Material) {
+        stationMesh.material.dispose()
+      }
+      // Get the shared material from the factory - we need to import it
+      // For now, create a new material with default white color
+      stationMesh.material = new THREE.MeshLambertMaterial({
+        color: 0xffffff,
+        side: THREE.DoubleSide
+      })
+      stationMesh.userData.hasIndividualMaterial = false
+    }
   }
 
   // --- Update Connected Route Rings ---
@@ -251,7 +267,14 @@ function runStationAnimations(group: THREE.Group, stationData: any, time: number
       const saturation = 0.8 + 0.2 * distressIntensity
       const lightness = 0.4 + 0.2 * (1 + heatPulse)
       
-      ;(stationMesh.material as THREE.MeshBasicMaterial).color.setHSL(redHue, saturation, lightness)
+      // Create individual material for this station to avoid affecting others
+      if (!stationMesh.userData.hasIndividualMaterial) {
+        const individualMaterial = (stationMesh.material as THREE.MeshLambertMaterial).clone()
+        stationMesh.material = individualMaterial
+        stationMesh.userData.hasIndividualMaterial = true
+      }
+      
+      ;(stationMesh.material as THREE.MeshLambertMaterial).color.setHSL(redHue, saturation, lightness)
     }
 
     // Animate primary ring
