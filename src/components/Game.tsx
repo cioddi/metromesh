@@ -139,63 +139,58 @@ export default function Game() {
     }
   }, [stations.length]);
 
+  // Helper to get feature name from a map layer at a position
+  const getFeatureNameFromLayer = useCallback((position: LngLat, layer: string): string | undefined => {
+    if (!mapHook?.map) {
+      return undefined;
+    }
+    const point = mapHook.map.project([position.lng, position.lat]);
+    const radius = 200; // px, increase search area
+    const bbox: [[number, number], [number, number]] = [
+      [point.x - radius, point.y - radius],
+      [point.x + radius, point.y + radius]
+    ];
+    const features = mapHook.map.queryRenderedFeatures(bbox, { layers: [layer] });
+    if (!features || features.length === 0) {
+      return undefined;
+    }
+    let minDist = Infinity;
+    let closestName = undefined;
+    for (const feature of features) {
+      const geom = feature.geometry;
+      let featureLng = undefined, featureLat = undefined;
+      if (geom?.type === 'Point' && Array.isArray(geom.coordinates)) {
+        [featureLng, featureLat] = geom.coordinates;
+      } else if (geom?.type === 'LineString' && Array.isArray(geom.coordinates) && geom.coordinates.length) {
+        // Use midpoint of linestring
+        const coords = geom.coordinates;
+        const mid = coords[Math.floor(coords.length / 2)];
+        featureLng = mid[0];
+        featureLat = mid[1];
+      } else if (geom?.type === 'Polygon' && Array.isArray(geom.coordinates) && geom.coordinates[0]?.length) {
+        // Use centroid of polygon
+        const coords = geom.coordinates[0];
+        const avg = coords.reduce((acc, c) => [acc[0]+c[0], acc[1]+c[1]], [0,0]);
+        featureLng = avg[0]/coords.length;
+        featureLat = avg[1]/coords.length;
+      }
+      // Use 'name' or 'ref' property, whichever is defined
+      const featureLabel = feature.properties?.name ?? feature.properties?.ref;
+      if (featureLng !== undefined && featureLat !== undefined) {
+        const dx = featureLng - position.lng;
+        const dy = featureLat - position.lat;
+        const dist = dx*dx + dy*dy;
+        if (dist < minDist) {
+          minDist = dist;
+          closestName = featureLabel;
+        }
+      }
+    }
+    return closestName;
+  }, [mapHook?.map]);
+
   // Add initial stations when game starts - clean and simple approach
   useEffect(() => {
-    function getFeatureNameFromLayer(position: LngLat, layer: string): string | undefined {
-      if (!mapHook?.map) {
-        console.log(`[FeatureName] No map instance available for layer ${layer}`);
-        return undefined;
-      }
-      const point = mapHook.map.project([position.lng, position.lat]);
-      const radius = 200; // px, increase search area
-      const bbox: [[number, number], [number, number]] = [
-        [point.x - radius, point.y - radius],
-        [point.x + radius, point.y + radius]
-      ];
-      console.log(`[FeatureName] Projected point:`, point, 'for position', position, 'bbox', bbox, 'layer', layer);
-      const features = mapHook.map.queryRenderedFeatures(bbox, { layers: [layer] });
-      console.log(`[FeatureName] Features found in ${layer}:`, features);
-      if (!features || features.length === 0) {
-        console.log(`[FeatureName] No features found in ${layer} at`, position);
-        return undefined;
-      }
-      let minDist = Infinity;
-      let closestName = undefined;
-      for (const feature of features) {
-        const geom = feature.geometry;
-        let featureLng = undefined, featureLat = undefined;
-        if (geom?.type === 'Point' && Array.isArray(geom.coordinates)) {
-          [featureLng, featureLat] = geom.coordinates;
-        } else if (geom?.type === 'LineString' && Array.isArray(geom.coordinates) && geom.coordinates.length) {
-          // Use midpoint of linestring
-          const coords = geom.coordinates;
-          const mid = coords[Math.floor(coords.length / 2)];
-          featureLng = mid[0];
-          featureLat = mid[1];
-        } else if (geom?.type === 'Polygon' && Array.isArray(geom.coordinates) && geom.coordinates[0]?.length) {
-          // Use centroid of polygon
-          const coords = geom.coordinates[0];
-          const avg = coords.reduce((acc, c) => [acc[0]+c[0], acc[1]+c[1]], [0,0]);
-          featureLng = avg[0]/coords.length;
-          featureLat = avg[1]/coords.length;
-        }
-        // Use 'name' or 'ref' property, whichever is defined
-        const featureLabel = feature.properties?.name ?? feature.properties?.ref;
-        console.log(feature.properties)
-        if (featureLng !== undefined && featureLat !== undefined) {
-          const dx = featureLng - position.lng;
-          const dy = featureLat - position.lat;
-          const dist = dx*dx + dy*dy;
-          if (dist < minDist) {
-            minDist = dist;
-            closestName = featureLabel;
-          }
-        }
-        console.log(`[FeatureName] Feature in ${layer}:`, feature, 'Centroid:', featureLng, featureLat, 'Distance:', minDist, 'Label:', featureLabel);
-      }
-      console.log(`[FeatureName] Closest label in ${layer}:`, closestName);
-      return closestName;
-    }
 
     (async () => {
       if (stations.length === 0 && !initialStationsCreated.current && mapHook?.map) {
@@ -224,7 +219,6 @@ export default function Game() {
         } else if (suburbName) {
           stationName = suburbName;
         }
-        console.log('[StationPlacement] Adding first initial station at', firstPos, 'with name', stationName);
         addStation(mapBounds, firstPos, isPositionOnWater, getTransportationDensity, true, stationName);
 
         // Create second initial station after a delay
@@ -241,12 +235,15 @@ export default function Game() {
           } else if (suburbName2) {
             stationName2 = suburbName2;
           }
-          console.log('[StationPlacement] Adding second initial station at', secondPos, 'with name', stationName2);
+          // If the first and second station names are exactly the same, set the second to just the suburb
+          if (stationName2 && stationName2 === stationName && suburbName2) {
+            stationName2 = suburbName2;
+          }
           addStation(mapBounds, secondPos, isPositionOnWater, getTransportationDensity, true, stationName2);
         }, 100);
       }
     })();
-  }, [stations.length, addStation, mapHook?.map, isPositionOnWater, getTransportationDensity]);
+  }, [stations.length, addStation, mapHook?.map, isPositionOnWater, getTransportationDensity, getFeatureNameFromLayer]);
 
   useEffect(() => {
     if (!isPlaying) return;
@@ -272,12 +269,17 @@ export default function Game() {
             lat: bounds.getNorthEast().lat
           }
         };
-        // Find the position that will be used for the new station
-  const newPos: LngLat | undefined = undefined;
-        // If addStation is called with undefined, it generates a random position, so we need to replicate that logic here if we want the name
-        // For now, we call addStation, then update the name after placement (or refactor addStation to return the position). For simplicity, we query at the random position after placement.
-        // But for now, if you want the name at placement, you need to generate the position first. This is a TODO for full accuracy.
-        addStation(gameBounds, newPos, isPositionOnWater, getTransportationDensity, false);
+        // Generate the random position here so we can query for names
+        const newPos = generateStationPosition(stations, gameBounds, isPositionOnWater, false);
+        const suburbName = getFeatureNameFromLayer(newPos, 'place_suburb');
+        const highwayName = getFeatureNameFromLayer(newPos, 'highway_name_other');
+        let stationName = undefined;
+        if (highwayName) {
+          stationName = highwayName + (suburbName ? ` (${suburbName})` : '');
+        } else if (suburbName) {
+          stationName = suburbName;
+        }
+        addStation(gameBounds, newPos, isPositionOnWater, getTransportationDensity, false, stationName);
       }
 
       // Spawn passengers based on building density
@@ -304,7 +306,8 @@ export default function Game() {
     lastStationSpawnTime,
     isPositionOnWater,
     getTransportationDensity,
-    mapHook.map
+    mapHook.map,
+    getFeatureNameFromLayer
   ]);
 
 
