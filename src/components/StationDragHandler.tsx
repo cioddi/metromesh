@@ -115,13 +115,11 @@ function StationDragHandler({ stations, routes, onCreateRoute, onExtendRoute, on
 
     const handleMouseDown = (e: MouseEvent) => {
 
-      window.StationDragHandlerDragging = true;
       handleStart(e.clientX, e.clientY, e);
     };
 
     const handleTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 1) {
-        window.StationDragHandlerDragging = true;
         e.preventDefault(); // Always prevent default to stop map panning
         const touch = e.touches[0];
         handleStart(touch.clientX, touch.clientY, e);
@@ -139,7 +137,11 @@ function StationDragHandler({ stations, routes, onCreateRoute, onExtendRoute, on
       let targetStation = null;
       let isValidTarget = false;
       let constrainedEnd = pointLngLat;
-
+      // Calculate distance from drag start to current position
+      const dragDistance = getDistanceInMeters(startStation.position, pointLngLat);
+      if (dragDistance <= 150) {
+        window.StationDragHandlerDragging = true;
+      }
       if (potentialTarget && potentialTarget.id !== currentDragState.startStation) {
         // If we have a potential target, snap the line to the best 45-degree angle to reach it
         const snappedEnd = snapTo45DegreeConnection(startStation.position, potentialTarget.position);
