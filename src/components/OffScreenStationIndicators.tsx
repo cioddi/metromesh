@@ -75,7 +75,7 @@ export default function OffScreenStationIndicators() {
     const visualHeight = window.innerHeight;
     
     const margin = 40;
-    const bufferZone = 100;
+    const bufferZone = 10;
     
     // Mobile top bar: treat top 120px as "outside" since it's covered by UI
     const mobileTopBarHeight = 120;
