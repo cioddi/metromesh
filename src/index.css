@@ -1057,7 +1057,7 @@ body {
 /* Off-screen station indicators */
 .off-screen-indicator {
   position: fixed;
-  z-index: 1500;
+  z-index: 9999;
   cursor: pointer;
   pointer-events: auto;
   transform-origin: center;

@@ -32,7 +32,7 @@ export default function OffScreenStationIndicators() {
     const element = document.createElement('div');
     element.className = `off-screen-indicator ${data.type}`;
     element.style.position = 'fixed';
-    element.style.zIndex = '1500';
+    element.style.zIndex = '9999';
     element.style.cursor = 'pointer';
     element.style.pointerEvents = 'auto';
     element.style.transformOrigin = 'center';
@@ -69,9 +69,16 @@ export default function OffScreenStationIndicators() {
     
     isUpdatingRef.current = true;
     const map = mapHook.map;
-    const canvas = map.getCanvas();
+    
+    // Use actual viewport dimensions for DOM positioning
+    const visualWidth = window.innerWidth;
+    const visualHeight = window.innerHeight;
+    
     const margin = 40;
     const bufferZone = 100;
+    
+    // Mobile top bar: treat top 120px as "outside" since it's covered by UI
+    const mobileTopBarHeight = 120;
     
     // Track which stations should have indicators
     const activeStations = new Map<string, IndicatorData>();
@@ -84,20 +91,28 @@ export default function OffScreenStationIndicators() {
       if (!shouldShow) return;
       
       const screenPoint = map.project([station.position.lng, station.position.lat]);
-      const centerX = canvas.width / 2;
-      const centerY = canvas.height / 2;
-      const dx = screenPoint.x - centerX;
-      const dy = screenPoint.y - centerY;
+      
+      // screenPoint is already in visual coordinates for DOM positioning
+      const visualX = screenPoint.x;
+      const visualY = screenPoint.y;
+      
+      const centerX = visualWidth / 2;
+      const centerY = visualHeight / 2;
+      const dx = visualX - centerX;
+      const dy = visualY - centerY;
       const distance = Math.sqrt(dx * dx + dy * dy);
       
       if (distance < 60) return; // Too close to center
       
       const isOutside = (
-        screenPoint.x < -bufferZone ||
-        screenPoint.y < -bufferZone ||
-        screenPoint.x > canvas.width + bufferZone ||
-        screenPoint.y > canvas.height + bufferZone
+        visualX < -bufferZone ||
+        visualY < mobileTopBarHeight ||  // Stations in top 120px are considered "outside"
+        visualX > visualWidth + bufferZone ||
+        visualY > visualHeight + bufferZone
       );
+      
+      // Debug logging for right/bottom detection
+      console.log(`Station ${station.id}: screen(${screenPoint.x.toFixed(1)}, ${screenPoint.y.toFixed(1)}), viewport(${visualWidth}, ${visualHeight}), isOutside: ${isOutside}`);
       
       if (isOutside) {
         activeStations.set(station.id, {
@@ -152,27 +167,39 @@ export default function OffScreenStationIndicators() {
       if (!station) return;
       
       const screenPoint = map.project([station.position.lng, station.position.lat]);
-      const centerX = canvas.width / 2;
-      const centerY = canvas.height / 2;
-      const dx = screenPoint.x - centerX;
-      const dy = screenPoint.y - centerY;
+      
+      // screenPoint is already in visual coordinates for DOM positioning
+      const visualX = screenPoint.x;
+      const visualY = screenPoint.y;
+      
+      const centerX = visualWidth / 2;
+      const centerY = visualHeight / 2;
+      const dx = visualX - centerX;
+      const dy = visualY - centerY;
       const distance = Math.sqrt(dx * dx + dy * dy);
       
       if (distance === 0) return;
       
-      const normalizedX = dx / distance;
-      const normalizedY = dy / distance;
+      // Mobile top bar considerations - use same value as detection
+      const effectiveTopMargin = Math.max(margin, mobileTopBarHeight);
       
-      // Calculate edge intersection
-      const rightEdge = (canvas.width / 2 - margin) / Math.abs(normalizedX);
-      const bottomEdge = (canvas.height / 2 - margin) / Math.abs(normalizedY);
-      const minDistance = Math.min(rightEdge, bottomEdge);
+      // Dead simple approach: clamp visual position to screen boundaries
+      let edgeX = visualX;
+      let edgeY = visualY;
       
-      let edgeX = centerX + normalizedX * minDistance;
-      let edgeY = centerY + normalizedY * minDistance;
+      // Clamp X coordinate to visual screen edges
+      if (visualX < margin) {
+        edgeX = margin;
+      } else if (visualX > visualWidth - margin) {
+        edgeX = visualWidth - margin;
+      }
       
-      edgeX = Math.max(margin, Math.min(canvas.width - margin, edgeX));
-      edgeY = Math.max(margin, Math.min(canvas.height - margin, edgeY));
+      // Clamp Y coordinate to visual screen edges (accounting for mobile top bar)
+      if (visualY < effectiveTopMargin) {
+        edgeY = effectiveTopMargin;
+      } else if (visualY > visualHeight - margin) {
+        edgeY = visualHeight - margin;
+      }
       
       const angle = Math.atan2(dy, dx) * 180 / Math.PI;
       
