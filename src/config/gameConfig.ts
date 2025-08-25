@@ -24,7 +24,7 @@ export const LONDON_BOUNDS = {
 export const GAME_CONFIG = {
   stationSpawnProbability: 0.0015, // Per game loop cycle (100ms) - half the rate
   passengerSpawnProbability: 0.045, // Balanced spawn rate for optimal gameplay
-  maxStations: 33,
+  maxStations: 18,
   initialZoom: 13,
   maxZoom: 16,
   gameLoopInterval: 100, // milliseconds

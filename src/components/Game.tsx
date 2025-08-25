@@ -7,6 +7,7 @@ import StationDragHandler from "./StationDragHandler";
 import GameOverScreen from "./GameOverScreen";
 import StationStats from "./StationStats";
 import RouteSelectionPopup from "./RouteSelectionPopup";
+import OffScreenStationIndicators from "./OffScreenStationIndicators";
 import { useGameStore, ROUTE_COLORS } from "../store/gameStore";
 import { generateStationPosition } from "../utils/stationPositioning";
 import { useMapNavigation } from "../hooks/useMapNavigation";
@@ -631,6 +632,8 @@ export default function Game() {
       />
 
       <StationStats />
+      
+      <OffScreenStationIndicators />
 
       {isGameOver && <GameOverScreen />}
     </>

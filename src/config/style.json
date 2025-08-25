@@ -786,10 +786,11 @@
         "text-offset": [0.5, 0],
         "text-size": 10,
         "text-transform": "uppercase",
+        "symbol-spacing": 1,
         "visibility": "visible"
       },
       "paint": {
-        "text-color": "rgba(117, 129, 145, 0)"
+        "text-color": "rgba(117, 129, 145, 80)"
       }
     },
     {
