@@ -682,6 +682,10 @@ const GameThreeLayer = ({ onStationClick, selectedStationId }: GameThreeLayerPro
     const handleMapInteraction = (e: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
       // MapLibre's click event already handles both mouse and touch
       // and provides normalized coordinates in e.point
+      if(window?.StationDragHandlerDragging){
+        return;
+      }
+      console.log('selected touchend')
       const pointLngLat = e.lngLat
       
       // Find closest station within reasonable distance (same as StationDragHandler)

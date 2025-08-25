@@ -111,8 +111,6 @@ export default function OffScreenStationIndicators() {
         visualY > visualHeight + bufferZone
       );
       
-      // Debug logging for right/bottom detection
-      console.log(`Station ${station.id}: screen(${screenPoint.x.toFixed(1)}, ${screenPoint.y.toFixed(1)}), viewport(${visualWidth}, ${visualHeight}), isOutside: ${isOutside}`);
       
       if (isOutside) {
         activeStations.set(station.id, {

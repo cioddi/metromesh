@@ -5,6 +5,14 @@ import type { LngLat, Route } from '../types';
 import { getDistanceInMeters } from '../utils/coordinates';
 import { createMetroRouteCoordinates } from '../utils/routeNetworkCalculator';
 
+// Extend the Window interface to include StationDragHandlerDragging
+declare global {
+  interface Window {
+    StationDragHandlerDragging: boolean;
+  }
+}
+
+window.StationDragHandlerDragging = false;
 interface DragState {
   isDragging: boolean;
   startStation: string | null;
@@ -106,11 +114,14 @@ function StationDragHandler({ stations, routes, onCreateRoute, onExtendRoute, on
     };
 
     const handleMouseDown = (e: MouseEvent) => {
+
+      window.StationDragHandlerDragging = true;
       handleStart(e.clientX, e.clientY, e);
     };
 
     const handleTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 1) {
+        window.StationDragHandlerDragging = true;
         e.preventDefault(); // Always prevent default to stop map panning
         const touch = e.touches[0];
         handleStart(touch.clientX, touch.clientY, e);
@@ -303,11 +314,19 @@ function StationDragHandler({ stations, routes, onCreateRoute, onExtendRoute, on
     };
 
     const handleMouseUp = () => {
+      setTimeout(() => {
+        window.StationDragHandlerDragging = false;
+      }, 500);
       handleEnd();
     };
 
     const handleTouchEnd = (e: TouchEvent) => {
+      setTimeout(() => {
+        window.StationDragHandlerDragging = false;
+      }, 500);
       // Only handle if there are no remaining touches
+      e.stopPropagation();
+      console.log('connected touchend')
       if (e.touches.length === 0) {
         handleEnd();
       }
